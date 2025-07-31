@@ -1,69 +1,103 @@
-# Welcome to your Lovable project
 
-## Project info
+# BVRIT Connect
 
-**URL**: https://lovable.dev/projects/160a8a3c-6d70-4a1a-833a-73f7367f0e55
+**BVRIT Connect** is a full-stack web platform built to bridge the gap between alumni and students of B V Raju Institute of Technology. It facilitates networking, mentorship, and career opportunities through a modern and scalable Firebase-backed system.
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## 🌐 Live Demo
 
-**Use Lovable**
+> https://minor-project-64ad1.web.app/
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/160a8a3c-6d70-4a1a-833a-73f7367f0e55) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## 📁 Project Structure
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+├── .firebase/              # Firebase configuration
+├── backend/                # Node.js backend (if separate)
+├── dist/                   # Production build (auto-generated)
+├── node_modules/           # Project dependencies
+├── public/                 # Public assets
+├── src/                    # Frontend source code
+├── .env                    # Environment variables
+├── .firebaserc             # Firebase project settings
+├── firebase.json           # Firebase configuration
+├── firestore.rules         # Firestore security rules
+├── firestore.indexes.json  # Firestore index configuration
+├── storage.rules           # Firebase Storage rules
+├── tailwind.config.ts      # Tailwind CSS configuration
+├── vite.config.ts          # Vite bundler configuration
 ```
 
-**Edit a file directly in GitHub**
+---
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 🚀 Features
 
-**Use GitHub Codespaces**
+- 🔐 **Role-Based Authentication**: Secure login/signup for alumni and students.
+- 👥 **Alumni Directory**: View profiles of fellow alumni and batchmates.
+- 💼 **Career Board**: Post and discover internships, jobs, and mentorships.
+- 📅 **Event Management**: Discover and register for college events.
+- 💬 **Smart Chatbot**: Personalized suggestions and interaction.
+- 📈 **Real-Time Updates**: Built with Firebase Firestore & Storage.
+- 🎨 **Responsive UI**: Built with React + Tailwind CSS for modern look.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## ⚙️ Tech Stack
 
-This project is built with .
+- **Frontend**: React, Tailwind CSS, TypeScript, Vite
+- **Backend**: Node.js, Express (in `backend/`)
+- **Database**: Firebase Firestore
+- **Authentication**: Firebase Auth
+- **Hosting**: Firebase Hosting / Vercel
+- **Tools**: Git, Postman, VS Code
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## 🛠️ Setup Instructions
 
-Simply open [Lovable](https://lovable.dev/projects/160a8a3c-6d70-4a1a-833a-73f7367f0e55) and click on Share -> Publish.
+1. **Clone the repository**  
+   ```bash
+   git clone https://github.com/Adbhutha10/BVRIT-Connect.git
+   cd BVRIT-Connect
+   ```
 
-## I want to use a custom domain - is that possible?
+2. **Install dependencies**  
+   ```bash
+   npm install
+   ```
 
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+3. **Setup Environment**  
+   Create a `.env` file with your Firebase credentials:
+   ```env
+   VITE_FIREBASE_API_KEY=your_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   ```
+
+4. **Start the development server**  
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## 📌 Contributions
+
+This project is open for contributions. Feel free to fork the repo, raise issues, or create PRs for enhancements and bug fixes.
+
+---
+
+## 📄 License
+
+MIT License © 2025 [Adbhutha](https://github.com/Adbhutha10)
+
+---
+
+## 🙌 Acknowledgments
+
+Special thanks to the BVRIT faculty and the open-source community for their support and resources.
