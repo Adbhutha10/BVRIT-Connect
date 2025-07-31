@@ -1,0 +1,316 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions for validation
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.role == 'admin';
+    }
+    
+    function isParticipant(mentorId, studentId) {
+      return request.auth.uid == mentorId || request.auth.uid == studentId;
+    }
+    
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+    }
+    
+    // Student profiles
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();  // Allow any authenticated user to create a student profile
+      allow update, delete: if isAuthenticated() && (
+        request.auth.uid == studentId || 
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Student notifications subcollection
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated() && (
+          studentId == request.auth.uid || 
+          isAdmin()
+        );
+        allow write: if isAuthenticated() && (
+          studentId == request.auth.uid || 
+          isAdmin()
+        );
+      }
+      
+      // Student mentorships subcollection
+      match /mentorships/{mentorshipId} {
+        allow read: if isAuthenticated() && (
+          studentId == request.auth.uid || 
+          isAdmin()
+        );
+        allow write: if isAuthenticated() && (
+          studentId == request.auth.uid || 
+          isAdmin() || 
+          resource.data.mentorId == request.auth.uid
+        );
+      }
+    }
+    
+    // Mentor profiles - NEW SECTION
+    match /mentors/{mentorId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();  
+      allow update, delete: if isAuthenticated() && (
+        request.auth.uid == mentorId || 
+        isAdmin()
+      );
+      
+      // Mentor notifications subcollection
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated() && (
+          mentorId == request.auth.uid || 
+          isAdmin()
+        );
+        allow write: if isAuthenticated() && (
+          mentorId == request.auth.uid || 
+          isAdmin()
+        );
+      }
+    }
+    
+    // Alumni profiles
+    match /alumni_profiles/{profileId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        isOwner(resource.data.userId) || 
+        isAdmin()
+      );
+      
+      // Alumni mentorship requests subcollection
+      match /mentorshipRequests/{requestId} {
+        allow read: if isAuthenticated() && (
+          profileId == request.auth.uid || 
+          resource.data.studentId == request.auth.uid || 
+          isAdmin()
+        );
+        allow write: if isAuthenticated() && (
+          profileId == request.auth.uid || 
+          resource.data.studentId == request.auth.uid || 
+          isAdmin()
+        );
+      }
+    }
+    
+    // Mentorship requests
+    match /mentorshipRequests/{requestId} {
+      // Individual document access
+      allow read: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Collection queries - more flexible rules
+      allow list: if isAuthenticated();
+      
+      allow create: if isAuthenticated();
+      
+      allow update: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid || 
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      allow delete: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid || 
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+    
+    // Active mentorships
+    match /mentorships/{mentorshipId} {
+      allow read: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Collection queries - more flexible rules
+      allow list: if isAuthenticated();
+      
+      allow create: if isAuthenticated();
+      
+      allow update, delete: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+    
+    // Meetings
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Collection queries with optimized filtering for dashboard
+      allow list: if isAuthenticated();
+      
+      // Mentors can create meetings
+      allow create: if isAuthenticated();
+      
+      // Both participants can update to support ratings, status changes, notes
+      allow update: if isAuthenticated() && (
+        isParticipant(resource.data.mentorId, resource.data.studentId) || 
+        isAdmin()
+      );
+      
+      // Only the mentor who created it or admins can delete
+      allow delete: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // Meeting requests
+    match /meetingRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Collection queries - more flexible rules
+      allow list: if isAuthenticated();
+      
+      // Students can create requests
+      allow create: if isAuthenticated();
+      
+      allow update: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid || 
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      allow delete: if isAuthenticated() && (
+        resource.data.mentorId == request.auth.uid || 
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+    
+    // Events - UPDATED FOR RSVP FUNCTIONALITY
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated();
+      
+      // Allow updates with specific rules for RSVP (attendees array) vs. general updates
+      allow update: if isAuthenticated() && (
+        // Original creator or admin can do full updates
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin() ||
+        // Any authenticated user can ONLY update the attendees array for RSVPs
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees']))
+      );
+      
+      allow delete: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // Event registrations
+    match /eventRegistrations/{registrationId} {
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated();
+                      
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // Job/internship opportunities
+    match /opportunities/{opportunityId} {
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated();
+                     
+      allow update, delete: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // Applications to opportunities
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.alumniId == request.auth.uid ||
+        isAdmin()
+      );
+                     
+      allow create: if isAuthenticated();
+                      
+      allow update: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.alumniId == request.auth.uid ||
+        isAdmin()
+      );
+                    
+      allow delete: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.alumniId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+    
+    // Communities
+    match /communities/{communityId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Community posts subcollection
+      match /posts/{postId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && (
+          resource.data.creatorId == request.auth.uid || 
+          isAdmin()
+        );
+      }
+    }
+    
+    // Community posts at root level (if needed)
+    match /communityPosts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // System-wide notifications (if any)
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+  }
+}
