@@ -1,103 +1,74 @@
+# 🎓 BVRIT Connect – Alumni-Student Networking Platform
 
-# BVRIT Connect
-
-**BVRIT Connect** is a full-stack web platform built to bridge the gap between alumni and students of B V Raju Institute of Technology. It facilitates networking, mentorship, and career opportunities through a modern and scalable Firebase-backed system.
-
----
-
-## 🌐 Live Demo
-
-> https://minor-project-64ad1.web.app/
-
----
-
-## 📁 Project Structure
-
-```
-├── .firebase/              # Firebase configuration
-├── backend/                # Node.js backend (if separate)
-├── dist/                   # Production build (auto-generated)
-├── node_modules/           # Project dependencies
-├── public/                 # Public assets
-├── src/                    # Frontend source code
-├── .env                    # Environment variables
-├── .firebaserc             # Firebase project settings
-├── firebase.json           # Firebase configuration
-├── firestore.rules         # Firestore security rules
-├── firestore.indexes.json  # Firestore index configuration
-├── storage.rules           # Firebase Storage rules
-├── tailwind.config.ts      # Tailwind CSS configuration
-├── vite.config.ts          # Vite bundler configuration
-```
+**BVRIT Connect** is a full-stack web application built exclusively for the BVRIT Narsapur community. It aims to foster strong connections between current students and alumni by offering a digital space for mentorship, career growth, and community collaboration.
 
 ---
 
 ## 🚀 Features
 
-- 🔐 **Role-Based Authentication**: Secure login/signup for alumni and students.
-- 👥 **Alumni Directory**: View profiles of fellow alumni and batchmates.
-- 💼 **Career Board**: Post and discover internships, jobs, and mentorships.
-- 📅 **Event Management**: Discover and register for college events.
-- 💬 **Smart Chatbot**: Personalized suggestions and interaction.
-- 📈 **Real-Time Updates**: Built with Firebase Firestore & Storage.
-- 🎨 **Responsive UI**: Built with React + Tailwind CSS for modern look.
+- 🔐 **Authentication**  
+  - Role-based login/signup (Student via `@bvrit.ac.in`, Alumni via verification)
+  
+- 🧑‍🎓 **Student Dashboard**
+  - Browse verified alumni
+  - Apply for internships, jobs, and projects
+  - Join interest-based tech communities
+  - RSVP for alumni-hosted events
+
+- 👩‍🏫 **Alumni Dashboard**
+  - Post/manage job or internship opportunities
+  - Host events and mentoring sessions
+  - View mentee requests and respond accordingly
+  - Act as community leads for various interest groups
+
+- 📇 **Alumni Directory**
+  - Search and filter alumni by year, industry, skills, and more
+
+- 💼 **Opportunities Board**
+  - View and apply for jobs and internships with status tracking
+
+- 📅 **Events Management**
+  - Participate in webinars, reunions, and technical sessions
+
+- 🤖 **AI Chatbot Assistant**
+  - Helps with navigation, FAQs, and personalized recommendations
 
 ---
 
-## ⚙️ Tech Stack
+## 🛠 Tech Stack
 
-- **Frontend**: React, Tailwind CSS, TypeScript, Vite
-- **Backend**: Node.js, Express (in `backend/`)
-- **Database**: Firebase Firestore
-- **Authentication**: Firebase Auth
-- **Hosting**: Firebase Hosting / Vercel
-- **Tools**: Git, Postman, VS Code
+**Frontend**  
+- React.js  
+- Tailwind CSS  
+- React Hook Form  
+- Radix UI  
+- React Router
 
----
+**Backend & Database**  
+- Firebase Authentication  
+- Firebase Firestore (NoSQL Database)  
+- Firebase Storage (for resumes, images)
 
-## 🛠️ Setup Instructions
-
-1. **Clone the repository**  
-   ```bash
-   git clone https://github.com/Adbhutha10/BVRIT-Connect.git
-   cd BVRIT-Connect
-   ```
-
-2. **Install dependencies**  
-   ```bash
-   npm install
-   ```
-
-3. **Setup Environment**  
-   Create a `.env` file with your Firebase credentials:
-   ```env
-   VITE_FIREBASE_API_KEY=your_key
-   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=your_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your_id
-   VITE_FIREBASE_APP_ID=your_app_id
-   ```
-
-4. **Start the development server**  
-   ```bash
-   npm run dev
-   ```
+**Other Tools**  
+- Recharts (dashboard analytics)  
+- Zod (schema validation)  
+- Gemini API (for chatbot assistant)
 
 ---
 
-## 📌 Contributions
+## 📦 Installation & Setup
 
-This project is open for contributions. Feel free to fork the repo, raise issues, or create PRs for enhancements and bug fixes.
+```bash
+# Clone the repository
+git clone https://github.com/your-username/bvrit-connect.git
+cd bvrit-connect
 
----
+# Install dependencies
+npm install
 
-## 📄 License
+# Start the development server
+npm run dev
 
-MIT License © 2025 [Adbhutha](https://github.com/Adbhutha10)
+🤝 Contributing
 
----
-
-## 🙌 Acknowledgments
-
-Special thanks to the BVRIT faculty and the open-source community for their support and resources.
+Pull requests are welcome! If you’d like to suggest improvements or add new features, feel free to fork the repo and open a PR.
