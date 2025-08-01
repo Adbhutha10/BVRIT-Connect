@@ -68,9 +68,14 @@ npm install
 
 # Start the development server
 npm run dev
+```
 
 ---
 
 ## 🤝 Contributing
 
 Pull requests are welcome! If you’d like to suggest improvements or add new features, feel free to fork the repo and open a PR.
+
+Please ensure your contributions follow our code style and commit guidelines.
+
+---
