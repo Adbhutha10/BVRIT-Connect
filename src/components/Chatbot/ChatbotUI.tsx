@@ -188,14 +188,14 @@ const ChatbotUI = () => {
 
   return (
     <div className="fixed bottom-5 right-5 z-50">
-      <Button
+      {/* <Button
         onClick={() => setIsOpen(prev => !prev)}
         size="icon"
         className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"
         aria-label={isOpen ? 'Close chat' : 'Open chat'}
       >
         {isOpen ? <X className="h-5 w-5" /> : <MessageSquare className="h-5 w-5" />}
-      </Button>
+      </Button> */}
 
       {isOpen && (
         <div className="absolute bottom-16 right-0 w-80 sm:w-96 h-[450px] bg-white rounded-lg shadow-xl border overflow-hidden flex flex-col animate-in slide-in-from-bottom-5 duration-300">
