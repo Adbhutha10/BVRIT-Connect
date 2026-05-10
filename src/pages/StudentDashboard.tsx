@@ -26,6 +26,7 @@ import {
   X
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import ChatbotUI from '@/components/Chatbot/ChatbotUI';
 import AlumniDirectory from '@/pages/AlumniDirectory';
@@ -133,6 +134,23 @@ const StudentDashboard = () => {
     );
     
     const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const newNotif = change.doc.data();
+          // Don't show toast for old notifications on initial load
+          const isRecent = newNotif.timestamp?.toDate() > new Date(Date.now() - 10000);
+          if (isRecent) {
+            toast(newNotif.content, {
+              description: "New Activity",
+              action: {
+                label: "View",
+                onClick: () => setActivePage(newNotif.type === 'message' ? 'communication' : 'mentorship'),
+              },
+            });
+          }
+        }
+      });
+
       const notificationsList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -319,70 +337,56 @@ const StudentDashboard = () => {
       where('userId', '==', studentProfile.userId)
     );
     
-    const loadEvents = async () => {
-      try {
-        // Get registered events
-        const registrationsSnapshot = await getDocs(registrationsQuery);
-        const registeredEventIds = registrationsSnapshot.docs.map(doc => doc.data().eventId);
+    // Real-time listener for registered events
+    const unsubscribeEvents = onSnapshot(registrationsQuery, async (snapshot) => {
+      const registeredEventIds = snapshot.docs.map(doc => doc.data().eventId);
+      const registeredEvents = [];
+
+      for (const eventId of registeredEventIds) {
+        const eventDocQuery = query(collection(db, 'events'), where('__name__', '==', eventId));
+        const eventDoc = await getDocs(eventDocQuery);
         
-        const registeredEvents = [];
-        for (const eventId of registeredEventIds) {
-          const eventDoc = await getDocs(query(
-            collection(db, 'events'),
-            where('__name__', '==', eventId),
-            where('eventDate', '>=', today)
-          ));
+        if (!eventDoc.empty) {
+          const eventData = eventDoc.docs[0].data();
           
-          if (!eventDoc.empty) {
-            const eventData = eventDoc.docs[0].data();
+          // Get host details
+          let hostName = "BVRIT Alumni";
+          if (eventData.creatorId) {
+            const hostQuery = query(
+              collection(db, 'alumni_profiles'),
+              where('userId', '==', eventData.creatorId)
+            );
             
-            // Get host details
-            let hostName = "BVRIT Alumni";
-            if (eventData.creatorId) {
-              const hostQuery = query(
-                collection(db, 'alumni_profiles'),
-                where('userId', '==', eventData.creatorId)
-              );
-              
-              const hostSnapshot = await getDocs(hostQuery);
-              if (!hostSnapshot.empty) {
-                hostName = hostSnapshot.docs[0].data().fullName;
-              }
+            const hostSnapshot = await getDocs(hostQuery);
+            if (!hostSnapshot.empty) {
+              hostName = hostSnapshot.docs[0].data().fullName;
             }
-            
-            registeredEvents.push({
-              id: eventDoc.docs[0].id,
-              title: eventData.title,
-              date: formatTimestamp(eventData.eventDate),
-              hostedBy: hostName,
-              venue: eventData.venue || 'Online',
-              attendees: eventData.attendeeCount || 0
-            });
           }
+          
+          registeredEvents.push({
+            id: eventDoc.docs[0].id,
+            title: eventData.title,
+            date: formatTimestamp(eventData.eventDate),
+            hostedBy: hostName,
+            venue: eventData.venue || 'Online',
+            attendees: eventData.attendeeCount || 0
+          });
         }
-        
-        // Sort events by date
-        const sortedEvents = registeredEvents.sort((a, b) => 
-          new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-        
-        setUpcomingEvents(sortedEvents);
-        setMetrics(prev => ({
-          ...prev, 
-          eventsRegisteredCount: sortedEvents.length
-        }));
-      } catch (error) {
-        console.error("Error loading events:", error);
       }
-    };
+      
+      // Sort events by date
+      const sortedEvents = registeredEvents.sort((a, b) => 
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      
+      setUpcomingEvents(sortedEvents);
+      setMetrics(prev => ({
+        ...prev, 
+        eventsRegisteredCount: sortedEvents.length
+      }));
+    });
     
-    loadEvents();
-    
-    // We don't set up a real-time listener for events to reduce reads
-    // Instead, refresh events when navigating to the events page
-    const refreshInterval = setInterval(loadEvents, 300000); // refresh every 5 minutes
-    
-    return () => clearInterval(refreshInterval);
+    return () => unsubscribeEvents();
   }, [studentProfile]);
 
   // Load opportunity applications
@@ -448,79 +452,63 @@ const StudentDashboard = () => {
       where('userId', '==', studentProfile.userId)
     );
     
-    const loadCommunities = async () => {
-      try {
-        const membershipSnapshot = await getDocs(membershipQuery);
-        const communityIds = membershipSnapshot.docs.map(doc => doc.data().communityId);
+    // Real-time listener for community memberships
+    const unsubscribeCommunities = onSnapshot(membershipQuery, async (snapshot) => {
+      const communityIds = snapshot.docs.map(doc => doc.data().communityId);
+      const communitiesList = [];
+      
+      for (const communityId of communityIds) {
+        const communityDoc = await getDocs(query(
+          collection(db, 'communities'),
+          where('__name__', '==', communityId)
+        ));
         
-        const communitiesList = [];
-        
-        for (const communityId of communityIds) {
-          const communityDoc = await getDocs(query(
-            collection(db, 'communities'),
-            where('__name__', '==', communityId)
+        if (!communityDoc.empty) {
+          const communityData = communityDoc.docs[0].data();
+          
+          // Get leader info
+          let leaderName = "Alumni Leader";
+          if (communityData.creatorId) {
+            const leaderQuery = query(
+              collection(db, 'alumni_profiles'),
+              where('userId', '==', communityData.creatorId)
+            );
+            const leaderSnapshot = await getDocs(leaderQuery);
+            if (!leaderSnapshot.empty) {
+              leaderName = leaderSnapshot.docs[0].data().fullName;
+            }
+          }
+          
+          // Get member count
+          const membersSnapshot = await getDocs(query(
+            collection(db, 'communityMembers'),
+            where('communityId', '==', communityId)
           ));
           
-          if (!communityDoc.empty) {
-            const communityData = communityDoc.docs[0].data();
-            
-            // Get leader info
-            let leaderName = "Alumni Leader";
-            if (communityData.creatorId) {
-              const leaderQuery = query(
-                collection(db, 'alumni_profiles'),
-                where('userId', '==', communityData.creatorId)
-              );
-              
-              const leaderSnapshot = await getDocs(leaderQuery);
-              if (!leaderSnapshot.empty) {
-                leaderName = leaderSnapshot.docs[0].data().fullName;
-              }
-            }
-            
-            // Get member count
-            const membersQuery = query(
-              collection(db, 'communityMembers'),
-              where('communityId', '==', communityId)
-            );
-            
-            const membersSnapshot = await getDocs(membersQuery);
-            
-            // Get recent posts count (last 7 days)
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            
-            const postsQuery = query(
-              collection(db, 'communityPosts'),
-              where('communityId', '==', communityId),
-              where('createdAt', '>=', oneWeekAgo)
-            );
-            
-            const postsSnapshot = await getDocs(postsQuery);
-            
-            communitiesList.push({
-              id: communityId,
-              name: communityData.name,
-              description: communityData.description,
-              leader: leaderName,
-              members: membersSnapshot.size,
-              newPosts: postsSnapshot.size
-            });
-          }
+          // Get recent posts count (last 7 days)
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          const postsSnapshot = await getDocs(query(
+            collection(db, 'communityPosts'),
+            where('communityId', '==', communityId),
+            where('createdAt', '>=', oneWeekAgo)
+          ));
+          
+          communitiesList.push({
+            id: communityId,
+            name: communityData.name,
+            description: communityData.description,
+            leader: leaderName,
+            members: membersSnapshot.size,
+            newPosts: postsSnapshot.size
+          });
         }
-        
-        setJoinedCommunities(communitiesList);
-      } catch (error) {
-        console.error("Error loading communities:", error);
       }
-    };
+      
+      setJoinedCommunities(communitiesList);
+    });
     
-    loadCommunities();
-    
-    // Refresh communities every 5 minutes
-    const refreshInterval = setInterval(loadCommunities, 300000);
-    
-    return () => clearInterval(refreshInterval);
+    return () => unsubscribeCommunities();
   }, [studentProfile]);
 
   // Helper function for formatting timestamps
@@ -729,7 +717,10 @@ const StudentDashboard = () => {
               )}
             </div>
             
-            <div className="flex items-center space-x-3">
+            <div 
+              className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setActivePage('profile')}
+            >
               {studentProfile.profilePictureUrl ? (
                 <img 
                   src={studentProfile.profilePictureUrl} 
@@ -754,7 +745,7 @@ const StudentDashboard = () => {
           {activePage === 'home' && (
             <div className="space-y-6 md:space-y-8">
               {/* Dashboard Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 border border-gray-100">
                   <div className="flex justify-between items-start">
                     <div>

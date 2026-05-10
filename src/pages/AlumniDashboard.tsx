@@ -53,8 +53,10 @@ import {
   orderBy, 
   limit, 
   getDocs, 
-  addDoc
+  addDoc,
+  writeBatch
 } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 const AlumniDashboard = () => {
   const navigate = useNavigate();
@@ -147,6 +149,23 @@ const AlumniDashboard = () => {
     );
     
     const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const newNotif = change.doc.data();
+          // Don't show toast for old notifications on initial load
+          const isRecent = newNotif.timestamp?.toDate() > new Date(Date.now() - 10000);
+          if (isRecent) {
+            toast(newNotif.content, {
+              description: "New Activity",
+              action: {
+                label: "View",
+                onClick: () => setActivePage(newNotif.type === 'message' ? 'communication' : 'requests'),
+              },
+            });
+          }
+        }
+      });
+
       const notificationsList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -338,30 +357,25 @@ const AlumniDashboard = () => {
       where('userId', '==', alumniProfile.userId)
     );
     
-    const loadEvents = async () => {
-      try {
-        // Get hosted events
-        const hostedSnapshot = await getDocs(hostedEventsQuery);
-        const hostedEvents = hostedSnapshot.docs.map(doc => ({
-          id: doc.id,
-          title: doc.data().title,
-          date: formatTimestamp(doc.data().eventDate),
-          status: 'Hosting',
-          attendees: doc.data().attendeeCount || 0
-        }));
-        
-        // Get registered events
-        const registrationsSnapshot = await getDocs(registrationsQuery);
-        const registeredEventIds = registrationsSnapshot.docs.map(doc => doc.data().eventId);
-        
+    // Real-time listener for hosted and registered events
+    const unsubscribeHosted = onSnapshot(hostedEventsQuery, (hostedSnapshot) => {
+      const hostedEvents = hostedSnapshot.docs.map(doc => ({
+        id: doc.id,
+        title: doc.data().title,
+        date: formatTimestamp(doc.data().eventDate),
+        status: 'Hosting',
+        attendees: doc.data().attendeeCount || 0
+      }));
+
+      // For registered events, we need a nested listener or combined logic
+      // To keep it simple and real-time, we'll listen to registrations
+      const unsubscribeRegs = onSnapshot(registrationsQuery, async (regsSnapshot) => {
+        const registeredEventIds = regsSnapshot.docs.map(doc => doc.data().eventId);
         const registeredEvents = [];
+
         for (const eventId of registeredEventIds) {
-          const eventDoc = await getDocs(query(
-            collection(db, 'events'),
-            where('__name__', '==', eventId),
-            where('eventDate', '>=', today)
-          ));
-          
+          const eventDocQuery = query(collection(db, 'events'), where('__name__', '==', eventId));
+          const eventDoc = await getDocs(eventDocQuery);
           if (!eventDoc.empty) {
             const eventData = eventDoc.docs[0].data();
             registeredEvents.push({
@@ -373,28 +387,21 @@ const AlumniDashboard = () => {
             });
           }
         }
-        
-        // Combine and sort events
+
         const allEvents = [...hostedEvents, ...registeredEvents]
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         
         setUpcomingEvents(allEvents);
         setMetrics(prev => ({
           ...prev, 
           eventsRegisteredCount: registeredEvents.length + hostedEvents.length
         }));
-      } catch (error) {
-        console.error("Error loading events:", error);
-      }
-    };
+      });
+
+      return () => unsubscribeRegs();
+    });
     
-    loadEvents();
-    
-    // We don't set up a real-time listener for events to reduce reads
-    // Instead, refresh events when navigating to the events page
-    const refreshInterval = setInterval(loadEvents, 300000); // refresh every 5 minutes
-    
-    return () => clearInterval(refreshInterval);
+    return () => unsubscribeHosted();
   }, [alumniProfile]);
 
   // Load posted opportunities
@@ -537,7 +544,7 @@ const AlumniDashboard = () => {
   
   const markAllAsRead = async () => {
     // Update notifications in Firestore
-    const batch = db.batch();
+    const batch = writeBatch(db);
     
     notifications.forEach(notification => {
       if (!notification.read) {
@@ -748,7 +755,10 @@ const AlumniDashboard = () => {
               )}
             </div>
             
-            <div className="flex items-center space-x-2 md:space-x-3">
+            <div 
+              className="flex items-center space-x-3 md:space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setActivePage('profile')}
+            >
               {alumniProfile.profilePictureUrl ? (
                 <img 
                   src={alumniProfile.profilePictureUrl} 

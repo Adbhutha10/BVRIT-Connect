@@ -34,8 +34,9 @@ const Chatbot = () => {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // API Config (Now handled by backend)
-  const AI_API_URL = 'http://localhost:5000/api/ai/chat';
+  // API Config (Dynamic for production)
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const AI_API_URL = `${API_BASE_URL}/api/ai/chat`;
 
   // Real-time user personalization
   useEffect(() => {
@@ -202,7 +203,7 @@ const Chatbot = () => {
   return (
     <>
       {!isOpen && (
-        <div className="fixed bottom-8 right-8 z-50">
+        <div className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-50">
           <button
             onClick={() => setIsOpen(true)}
             className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-blue-700 hover:scale-110 shadow-2xl transition-all flex items-center justify-center group rounded-2xl shadow-indigo-200"
@@ -213,7 +214,7 @@ const Chatbot = () => {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[380px] h-[600px] bg-white/95 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl border border-gray-100 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-10 duration-500">
+        <div className="fixed bottom-24 right-4 md:right-8 w-[calc(100vw-32px)] md:w-[380px] h-[500px] md:h-[600px] bg-white rounded-3xl shadow-2xl border border-gray-100 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 duration-300">
           {/* Elite Header */}
           <div className="bg-gradient-to-br from-indigo-700 via-blue-700 to-purple-800 p-6 text-white shrink-0">
             <div className="flex items-center justify-between">

@@ -42,6 +42,7 @@ interface Conversation {
   lastMessageTime: Timestamp;
   unreadCount: number;
   online?: boolean;
+  participantId: string;
 }
 
 interface Message {
@@ -78,9 +79,10 @@ const StudentCommunication: React.FC = () => {
           participantPhoto: data.mentorPhotoURL,
           participantRole: 'mentor',
           lastMessage: "Hey! Looking forward to our session.",
-          lastMessageTime: data.startDate,
+          lastMessageTime: data.startDate || data.createdAt || Timestamp.now(),
           unreadCount: 0,
-          online: Math.random() > 0.5
+          online: Math.random() > 0.5,
+          participantId: data.mentorId
         };
       });
       setConversations(convs);
@@ -89,19 +91,54 @@ const StudentCommunication: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Real-time message listener
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const messagesQuery = query(
+      collection(db, "mentorships", selectedChat.id, "messages"),
+      orderBy("timestamp", "asc")
+    );
+
+    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Message[];
+      setMessages(msgs);
+    });
+
+    return () => unsubscribeMessages();
+  }, [selectedChat]);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
     
-    // In a real app, this would write to a 'messages' subcollection
-    const msg: Message = {
-      id: Date.now().toString(),
-      senderId: auth.currentUser?.uid || "",
-      text: newMessage,
-      timestamp: Timestamp.now()
-    };
-    
-    setMessages([...messages, msg]);
-    setNewMessage("");
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      // 1. Save message to Firestore subcollection
+      await addDoc(collection(db, "mentorships", selectedChat.id, "messages"), {
+        senderId: currentUser.uid,
+        text: newMessage,
+        timestamp: serverTimestamp()
+      });
+
+      // 2. Trigger notification for the recipient
+      await addDoc(collection(db, "notifications"), {
+        recipientId: selectedChat.participantId,
+        content: `New message from student: ${newMessage.substring(0, 50)}${newMessage.length > 50 ? '...' : ''}`,
+        type: 'message',
+        timestamp: serverTimestamp(),
+        readAt: null,
+        senderName: currentUser.displayName || 'Student'
+      });
+      
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
   };
 
   return (
@@ -180,7 +217,7 @@ const StudentCommunication: React.FC = () => {
                   {selectedChat.participantPhoto ? <img src={selectedChat.participantPhoto} className="h-full w-full object-cover" /> : <User className="h-5 w-5 text-gray-400 mt-2 ml-2" />}
                 </div>
                 <div>
-                  <h2 className="font-bold text-gray-900">{selectedChat.participantName}</h2>
+                  <h2 className="font-bold text-gray-900 truncate max-w-[120px] sm:max-w-none">{selectedChat.participantName}</h2>
                   <p className="text-xs text-green-500 flex items-center">
                     <span className="h-1.5 w-1.5 bg-green-500 rounded-full mr-2"></span>
                     Online
