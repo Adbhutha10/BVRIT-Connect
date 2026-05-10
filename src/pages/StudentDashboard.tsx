@@ -32,9 +32,10 @@ import AlumniDirectory from '@/pages/AlumniDirectory';
 import StudentEvents from '@/pages/StudentEvents';
 import StudentOpportunities from '@/pages/StudentOpportunities';
 import StudentCommunity from '@/pages/StudentCommunity';
-import MentorshipRequests from '@/pages/MentorshipRequests';
+import StudentMentorshipPanel from '@/pages/StudentMentorshipPanel';
 import StudentProfile from '@/pages/StudentProfile';
 import StudentSettings from '@/pages/StudentSettings';
+import StudentCommunication from '@/pages/StudentCommunication';
 import Chatbot from './Chatbot';  
 
 // Firebase imports
@@ -50,7 +51,8 @@ import {
   orderBy, 
   limit, 
   getDocs, 
-  addDoc
+  addDoc,
+  writeBatch
 } from 'firebase/firestore';
 
 const StudentDashboard = () => {
@@ -361,7 +363,7 @@ const StudentDashboard = () => {
         
         // Sort events by date
         const sortedEvents = registeredEvents.sort((a, b) => 
-          new Date(a.date) - new Date(b.date)
+          new Date(a.date).getTime() - new Date(b.date).getTime()
         );
         
         setUpcomingEvents(sortedEvents);
@@ -539,7 +541,7 @@ const StudentDashboard = () => {
   
   const markAllAsRead = async () => {
     // Update notifications in Firestore
-    const batch = db.batch();
+    const batch = writeBatch(db);
     
     notifications.forEach(notification => {
       if (!notification.read) {
@@ -1212,7 +1214,8 @@ const StudentDashboard = () => {
           {activePage === 'events' && <StudentEvents />}
           {activePage === 'opportunities' && <StudentOpportunities />}
           {activePage === 'communities' && <StudentCommunity />}
-          {activePage === 'mentorship' && <MentorshipRequests />}
+          {activePage === 'mentorship' && <StudentMentorshipPanel />}
+          {activePage === 'communication' && <StudentCommunication />}
           {activePage === 'profile' && <StudentProfile />}
           {activePage === 'settings' && <StudentSettings />}
         </main>

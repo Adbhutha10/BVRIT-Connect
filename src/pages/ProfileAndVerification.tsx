@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, 
   CheckCircle, 
@@ -12,515 +12,390 @@ import {
   GraduationCap, 
   MapPin, 
   Github, 
-  Linkedin
+  Linkedin,
+  Award,
+  BookOpen,
+  MessageCircle,
+  Camera,
+  ShieldCheck,
+  FileText,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { db, auth } from '@/firebase';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { toast } from '@/hooks/use-toast';
 
 const ProfileAndVerification = () => {
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState({
-    fullName: 'Beere Adbhutha',
-    graduationYear: '2018',
-    branch: 'Computer Science Engineering',
-    jobTitle: 'Senior Software Engineer',
-    company: 'Google',
+    fullName: '',
+    graduationYear: '',
+    branch: '',
+    jobTitle: '',
+    company: '',
     industry: 'Technology',
-    location: 'Hyderabad, India',
-    about: 'Experienced software engineer specializing in web development and cloud computing. Passionate about mentoring students and helping them navigate their career paths in tech.',
-    skills: ['React', 'Node.js', 'Firebase', 'Cloud Computing', 'JavaScript', 'TypeScript', 'AWS'],
-    education: [
-      { degree: 'B.Tech in Computer Science', institution: 'BVRIT Narsapur', year: '2018' },
-      { degree: 'M.S. in Computer Science', institution: 'Georgia Tech', year: '2021' }
-    ],
-    experience: [
-      { role: 'Senior Software Engineer', company: 'Google', duration: '2021 - Present', description: 'Working on cloud infrastructure and web applications.' },
-      { role: 'Software Engineer', company: 'Amazon', duration: '2018 - 2021', description: 'Full-stack development for e-commerce platforms.' }
-    ],
+    location: '',
+    about: '',
+    skills: [] as string[],
+    education: [] as any[],
+    experience: [] as any[],
     willingToMentor: true,
-    linkedinUrl: 'https://linkedin.com/in/adbhutha',
-    githubUrl: 'https://github.com/adbhutha10',
+    linkedinUrl: '',
+    githubUrl: '',
+    profilePictureUrl: '',
     verificationStatus: 'verified' // 'pending', 'verified', 'rejected'
   });
 
-  const handleInputChange = (e) => {
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setProfileData({
+          fullName: data.fullName || data.name || 'User',
+          graduationYear: data.graduationYear || '',
+          branch: data.branch || '',
+          jobTitle: data.position || '',
+          company: data.company || '',
+          industry: data.industry || 'Technology',
+          location: data.location || 'Hyderabad, India',
+          about: data.bio || '',
+          skills: data.skills || [],
+          education: data.education || [
+            { degree: `B.Tech in ${data.branch || 'Engineering'}`, institution: 'BVRIT Narsapur', year: data.graduationYear || '' }
+          ],
+          experience: data.experience || [
+            { role: data.position || '', company: data.company || '', duration: 'Present', description: '' }
+          ],
+          willingToMentor: data.willingToMentor !== undefined ? data.willingToMentor : true,
+          linkedinUrl: data.linkedin || '',
+          githubUrl: data.github || '',
+          profilePictureUrl: data.profilePictureUrl || '',
+          verificationStatus: data.verificationStatus || 'verified'
+        });
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setProfileData({
-      ...profileData,
+    setProfileData(prev => ({
+      ...prev,
       [name]: value
-    });
+    }));
   };
 
-  const handleSkillChange = (e) => {
-    const skills = e.target.value.split(',').map(skill => skill.trim());
-    setProfileData({
-      ...profileData,
-      skills
-    });
-  };
-
-  const handleSaveProfile = () => {
-    // Here you would typically save to Firebase
-    setIsEditing(false);
-    // Show success message
-  };
-
-  const renderVerificationStatus = () => {
-    switch(profileData.verificationStatus) {
-      case 'verified':
-        return (
-          <Alert className="bg-green-50 border-green-200 mb-6">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            <AlertTitle className="text-green-800 ml-2">Verified Alumni</AlertTitle>
-            <AlertDescription className="text-green-700 ml-7">
-              Your alumni status has been verified. You have full access to all platform features.
-            </AlertDescription>
-          </Alert>
-        );
-      case 'pending':
-        return (
-          <Alert className="bg-yellow-50 border-yellow-200 mb-6">
-            <Calendar className="h-5 w-5 text-yellow-600" />
-            <AlertTitle className="text-yellow-800 ml-2">Verification Pending</AlertTitle>
-            <AlertDescription className="text-yellow-700 ml-7">
-              Your verification is being processed. This usually takes 1-2 business days.
-            </AlertDescription>
-          </Alert>
-        );
-      case 'rejected':
-        return (
-          <Alert className="bg-red-50 border-red-200 mb-6">
-            <XCircle className="h-5 w-5 text-red-600" />
-            <AlertTitle className="text-red-800 ml-2">Verification Failed</AlertTitle>
-            <AlertDescription className="text-red-700 ml-7">
-              We couldn't verify your alumni status. Please resubmit with valid BVRIT graduation documents.
-            </AlertDescription>
-          </Alert>
-        );
-      default:
-        return null;
+  const handleSaveProfile = async () => {
+    if (!auth.currentUser) return;
+    try {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      await setDoc(userRef, {
+        fullName: profileData.fullName,
+        bio: profileData.about,
+        position: profileData.jobTitle,
+        company: profileData.company,
+        location: profileData.location,
+        linkedin: profileData.linkedinUrl,
+        github: profileData.githubUrl,
+        profilePictureUrl: profileData.profilePictureUrl,
+        willingToMentor: profileData.willingToMentor,
+        updatedAt: new Date()
+      }, { merge: true });
+      setIsEditing(false);
+      toast({
+        title: "Profile Synchronized",
+        description: "Your professional details and photo are now live.",
+      });
+    } catch (error) {
+      console.error("Error saving profile:", error);
     }
   };
 
+  if (loading) return <div className="p-20 text-center animate-pulse text-indigo-600 font-bold">Retrieving Verified Identity...</div>;
+
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-2">Profile & Verification</h2>
-        <p className="text-gray-600">Manage your profile information and verification status</p>
+    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-700">
+      
+      {/* Page Title & Actions */}
+      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
+            Professional Verification Hub
+          </h2>
+          <p className="text-gray-500 font-medium flex items-center mt-1">
+            <ShieldCheck className="h-4 w-4 mr-2 text-emerald-500" />
+            Institutional Validation & Professional Identity
+          </p>
+        </div>
+        {!isEditing ? (
+          <Button 
+            onClick={() => setIsEditing(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 rounded-2xl shadow-lg px-8 h-12 transition-all active:scale-95"
+          >
+            <Edit className="h-4 w-4 mr-2" /> Modify Profile
+          </Button>
+        ) : (
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={() => setIsEditing(false)} className="rounded-2xl h-12 px-6">Discard</Button>
+            <Button onClick={handleSaveProfile} className="bg-emerald-600 hover:bg-emerald-700 rounded-2xl px-8 h-12 shadow-lg shadow-emerald-100 transition-all active:scale-95">
+              <Save className="h-4 w-4 mr-2" /> Commit Changes
+            </Button>
+          </div>
+        )}
       </div>
 
-      {renderVerificationStatus()}
+      {/* Verification Status Alert */}
+      <div className="mb-8">
+        {profileData.verificationStatus === 'verified' && (
+          <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] flex items-center gap-6 shadow-sm">
+            <div className="h-16 w-16 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
+              <ShieldCheck className="h-10 w-10" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-emerald-900 flex items-center">
+                Institutional Verification Active
+                <Badge className="ml-3 bg-emerald-500 text-white border-none uppercase text-[10px] tracking-widest">Official</Badge>
+              </h3>
+              <p className="text-emerald-700/80 text-sm mt-1">Your BVRIT Alumni status is fully verified. Your profile is prioritized in search results and mentorship matching.</p>
+            </div>
+          </div>
+        )}
+      </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Profile Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-white relative">
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex">
-              <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center text-blue-600 font-bold text-2xl">
-                {profileData.fullName.split(' ').map(n => n[0]).join('')}
+      <div className="bg-white rounded-[2.5rem] shadow-xl shadow-indigo-100/20 border border-gray-100 overflow-hidden">
+        
+        {/* Profile Header Block */}
+        <div className="bg-gradient-to-br from-indigo-700 via-purple-700 to-blue-800 p-10 text-white relative">
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-10 relative z-10">
+            
+            {/* Profile Photo Display */}
+            <div className="relative group">
+              <div className="w-40 h-40 rounded-[2.5rem] bg-white/20 backdrop-blur-xl border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-2xl transition-transform group-hover:scale-105 duration-500">
+                {profileData.profilePictureUrl ? (
+                  <img 
+                    src={profileData.profilePictureUrl} 
+                    alt={profileData.fullName}
+                    className="h-full w-full object-cover rounded-[2rem]"
+                    onError={(e) => {
+                      (e.target as any).src = 'https://ui-avatars.com/api/?name=' + profileData.fullName;
+                    }}
+                  />
+                ) : (
+                  <div className="text-white font-black text-5xl">
+                    {profileData.fullName.split(' ').map(n => n[0]).join('')}
+                  </div>
+                )}
               </div>
-              <div className="ml-6">
-                <h3 className="text-2xl font-bold">{profileData.fullName}</h3>
-                <p className="text-blue-100">{profileData.jobTitle} at {profileData.company}</p>
-                <p className="flex items-center text-blue-100 mt-1">
-                  <GraduationCap className="h-4 w-4 mr-1" />
-                  {profileData.branch}, Class of {profileData.graduationYear}
-                </p>
-                <p className="flex items-center text-blue-100 mt-1">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  {profileData.location}
-                </p>
+              <div className="absolute -bottom-3 -right-3 bg-white text-indigo-600 p-3 rounded-2xl shadow-2xl cursor-pointer hover:bg-indigo-50 transition-colors">
+                <Camera className="h-5 w-5" />
               </div>
             </div>
-            {!isEditing && (
-              <Button 
-                onClick={() => setIsEditing(true)}
-                className="bg-white text-blue-600 hover:bg-blue-50"
-              >
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Profile
-              </Button>
-            )}
-            {isEditing && (
-              <Button 
-                onClick={handleSaveProfile}
-                className="bg-white text-blue-600 hover:bg-blue-50"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save Changes
-              </Button>
-            )}
-          </div>
-          
-          <div className="flex gap-4">
-            {profileData.linkedinUrl && (
-              <a 
-                href={profileData.linkedinUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="bg-white bg-opacity-20 rounded-lg px-4 py-2 flex items-center hover:bg-opacity-30"
-              >
-                <Linkedin className="h-5 w-5 mr-2" />
-                LinkedIn
-              </a>
-            )}
-            {profileData.githubUrl && (
-              <a 
-                href={profileData.githubUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="bg-white bg-opacity-20 rounded-lg px-4 py-2 flex items-center hover:bg-opacity-30"
-              >
-                <Github className="h-5 w-5 mr-2" />
-                GitHub
-              </a>
-            )}
-            <div className="bg-white bg-opacity-20 rounded-lg px-4 py-2 flex items-center">
-              {profileData.willingToMentor ? (
-                <>
-                  <CheckCircle className="h-5 w-5 mr-2 text-green-300" />
-                  <span>Available for Mentoring</span>
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 mr-2 text-red-300" />
-                  <span>Not Available for Mentoring</span>
-                </>
-              )}
+            
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex flex-col md:flex-row items-center gap-4">
+                <h3 className="text-4xl font-black tracking-tight">{profileData.fullName}</h3>
+                <Badge className="bg-emerald-400 text-white border-none rounded-lg px-3">
+                  <ShieldCheck className="h-3 w-3 mr-1" /> VERIFIED
+                </Badge>
+              </div>
+              <p className="text-2xl text-indigo-100 mt-2 font-medium">{profileData.jobTitle} at {profileData.company}</p>
+              
+              <div className="flex flex-wrap justify-center md:justify-start gap-8 mt-8">
+                <div className="flex items-center text-indigo-50 text-sm font-medium">
+                  <GraduationCap className="h-5 w-5 mr-3 text-indigo-300" />
+                  {profileData.branch}, Class of {profileData.graduationYear}
+                </div>
+                <div className="flex items-center text-indigo-50 text-sm font-medium">
+                  <MapPin className="h-5 w-5 mr-3 text-indigo-300" />
+                  {profileData.location}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-10">
+                <a href={profileData.linkedinUrl} target="_blank" className="bg-white/15 hover:bg-white/25 p-3 rounded-2xl border border-white/20 transition-all flex items-center px-6 gap-3 text-sm backdrop-blur-md shadow-lg">
+                  <Linkedin className="h-5 w-5" /> LinkedIn Profile
+                </a>
+                <a href={profileData.githubUrl} target="_blank" className="bg-white/15 hover:bg-white/25 p-3 rounded-2xl border border-white/20 transition-all flex items-center px-6 gap-3 text-sm backdrop-blur-md shadow-lg">
+                  <Github className="h-5 w-5" /> GitHub
+                </a>
+                <div className="bg-emerald-500/20 p-3 rounded-2xl border border-emerald-400/30 flex items-center px-6 gap-3 text-sm backdrop-blur-md text-emerald-50 font-bold">
+                  <MessageCircle className="h-5 w-5" /> Open to Mentoring
+                </div>
+              </div>
             </div>
           </div>
         </div>
         
-        {/* Profile Content */}
-        <div className="p-8">
-          {/* About Section */}
-          <div className="mb-8">
-            <h4 className="text-lg font-semibold mb-4">About</h4>
-            {isEditing ? (
-              <textarea
-                name="about"
-                value={profileData.about}
-                onChange={handleInputChange}
-                className="w-full p-3 border rounded-md h-32"
-              />
-            ) : (
-              <p className="text-gray-700">{profileData.about}</p>
-            )}
-          </div>
+        {/* Detailed Content Grid */}
+        <div className="p-10 grid grid-cols-1 lg:grid-cols-3 gap-12">
           
-          {/* Skills Section */}
-          <div className="mb-8">
-            <h4 className="text-lg font-semibold mb-4">Skills</h4>
-            {isEditing ? (
-              <input
-                type="text"
-                name="skills"
-                value={profileData.skills.join(', ')}
-                onChange={handleSkillChange}
-                className="w-full p-3 border rounded-md"
-                placeholder="Enter skills separated by commas"
-              />
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {profileData.skills.map((skill, index) => (
-                  <span 
-                    key={index}
-                    className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                  >
-                    {skill}
-                  </span>
-                ))}
+          {/* Main Info Column */}
+          <div className="lg:col-span-2 space-y-12">
+            
+            {isEditing && (
+              <div className="bg-blue-50/50 p-8 rounded-[2rem] border border-blue-100/50 animate-in zoom-in-95 duration-300 space-y-6">
+                <h4 className="text-blue-900 font-bold flex items-center">
+                  <Camera className="h-5 w-5 mr-3" /> Update Profile Visuals
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold text-blue-600 uppercase">Profile Image URL</Label>
+                    <Input name="profilePictureUrl" value={profileData.profilePictureUrl} onChange={handleInputChange} className="rounded-xl bg-white border-blue-100" placeholder="Paste link from LinkedIn..." />
+                    <p className="text-[10px] text-blue-400">Pastes your LinkedIn photo link here to update your avatar.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold text-blue-600 uppercase">Current Role</Label>
+                    <Input name="jobTitle" value={profileData.jobTitle} onChange={handleInputChange} className="rounded-xl bg-white border-blue-100" />
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-          
-          {/* Experience Section */}
-          <div className="mb-8">
-            <h4 className="text-lg font-semibold mb-4">Experience</h4>
-            {isEditing ? (
-              <div className="space-y-4">
+
+            {/* About Section */}
+            <div className="relative">
+              <h4 className="text-xl font-bold mb-6 flex items-center text-gray-900">
+                <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center mr-4">
+                  <User className="h-5 w-5 text-indigo-600" />
+                </div>
+                Professional Narrative
+              </h4>
+              {isEditing ? (
+                <Textarea
+                  name="about"
+                  value={profileData.about}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-50/50 rounded-2xl h-40 border-gray-200 p-6 text-gray-700 leading-relaxed"
+                  placeholder="Share your career journey and mentorship goals..."
+                />
+              ) : (
+                <div className="bg-gray-50/30 p-8 rounded-[2rem] border border-gray-100/50">
+                  <p className="text-gray-600 leading-relaxed text-lg italic">
+                    "{profileData.about || 'A dedicated professional contributing to the BVRIT alumni network through mentorship and industry collaboration.'}"
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            {/* Experience Section */}
+            <div>
+              <h4 className="text-xl font-bold mb-8 flex items-center text-gray-900">
+                <div className="h-10 w-10 bg-purple-50 rounded-xl flex items-center justify-center mr-4">
+                  <Briefcase className="h-5 w-5 text-purple-600" />
+                </div>
+                Career Trajectory
+              </h4>
+              <div className="space-y-10">
                 {profileData.experience.map((exp, index) => (
-                  <div key={index} className="p-4 border rounded-md">
-                    <div className="grid grid-cols-2 gap-4 mb-2">
-                      <input
-                        type="text"
-                        value={exp.role}
-                        onChange={(e) => {
-                          const updatedExp = [...profileData.experience];
-                          updatedExp[index].role = e.target.value;
-                          setProfileData({...profileData, experience: updatedExp});
-                        }}
-                        className="p-2 border rounded"
-                        placeholder="Job Title"
-                      />
-                      <input
-                        type="text"
-                        value={exp.company}
-                        onChange={(e) => {
-                          const updatedExp = [...profileData.experience];
-                          updatedExp[index].company = e.target.value;
-                          setProfileData({...profileData, experience: updatedExp});
-                        }}
-                        className="p-2 border rounded"
-                        placeholder="Company"
-                      />
+                  <div key={index} className="flex gap-6">
+                    <div className="flex flex-col items-center">
+                      <div className="h-12 w-12 bg-white border-2 border-purple-100 rounded-2xl flex items-center justify-center text-purple-600 shadow-sm relative z-10">
+                        <Building2 className="h-6 w-6" />
+                      </div>
+                      <div className="flex-1 w-0.5 bg-purple-50 mt-4"></div>
                     </div>
-                    <div className="mb-2">
-                      <input
-                        type="text"
-                        value={exp.duration}
-                        onChange={(e) => {
-                          const updatedExp = [...profileData.experience];
-                          updatedExp[index].duration = e.target.value;
-                          setProfileData({...profileData, experience: updatedExp});
-                        }}
-                        className="p-2 border rounded w-full"
-                        placeholder="Duration"
-                      />
-                    </div>
-                    <textarea
-                      value={exp.description}
-                      onChange={(e) => {
-                        const updatedExp = [...profileData.experience];
-                        updatedExp[index].description = e.target.value;
-                        setProfileData({...profileData, experience: updatedExp});
-                      }}
-                      className="p-2 border rounded w-full"
-                      placeholder="Description"
-                      rows="3"
-                    />
-                  </div>
-                ))}
-                <Button 
-                  className="bg-blue-100 text-blue-800 hover:bg-blue-200"
-                  onClick={() => {
-                    const updatedExp = [...profileData.experience];
-                    updatedExp.push({ role: '', company: '', duration: '', description: '' });
-                    setProfileData({...profileData, experience: updatedExp});
-                  }}
-                >
-                  Add Experience
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {profileData.experience.map((exp, index) => (
-                  <div key={index} className="border-b pb-4 last:border-b-0 last:pb-0">
-                    <div className="flex justify-between mb-1">
-                      <h5 className="font-medium text-gray-900">{exp.role}</h5>
-                      <span className="text-gray-500 text-sm">{exp.duration}</span>
-                    </div>
-                    <p className="text-gray-700 text-sm mb-2 flex items-center">
-                      <Building2 className="h-4 w-4 mr-1 text-gray-500" />
-                      {exp.company}
-                    </p>
-                    <p className="text-gray-600 text-sm">{exp.description}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          {/* Education Section */}
-          <div className="mb-8">
-            <h4 className="text-lg font-semibold mb-4">Education</h4>
-            {isEditing ? (
-              <div className="space-y-4">
-                {profileData.education.map((edu, index) => (
-                  <div key={index} className="p-4 border rounded-md">
-                    <div className="grid grid-cols-2 gap-4 mb-2">
-                      <input
-                        type="text"
-                        value={edu.degree}
-                        onChange={(e) => {
-                          const updatedEdu = [...profileData.education];
-                          updatedEdu[index].degree = e.target.value;
-                          setProfileData({...profileData, education: updatedEdu});
-                        }}
-                        className="p-2 border rounded"
-                        placeholder="Degree"
-                      />
-                      <input
-                        type="text"
-                        value={edu.year}
-                        onChange={(e) => {
-                          const updatedEdu = [...profileData.education];
-                          updatedEdu[index].year = e.target.value;
-                          setProfileData({...profileData, education: updatedEdu});
-                        }}
-                        className="p-2 border rounded"
-                        placeholder="Year"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      value={edu.institution}
-                      onChange={(e) => {
-                        const updatedEdu = [...profileData.education];
-                        updatedEdu[index].institution = e.target.value;
-                        setProfileData({...profileData, education: updatedEdu});
-                      }}
-                      className="p-2 border rounded w-full"
-                      placeholder="Institution"
-                    />
-                  </div>
-                ))}
-                <Button 
-                  className="bg-blue-100 text-blue-800 hover:bg-blue-200"
-                  onClick={() => {
-                    const updatedEdu = [...profileData.education];
-                    updatedEdu.push({ degree: '', institution: '', year: '' });
-                    setProfileData({...profileData, education: updatedEdu});
-                  }}
-                >
-                  Add Education
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {profileData.education.map((edu, index) => (
-                  <div key={index} className="flex justify-between items-start">
-                    <div>
-                      <h5 className="font-medium text-gray-900">{edu.degree}</h5>
-                      <p className="text-gray-700 text-sm flex items-center">
-                        <GraduationCap className="h-4 w-4 mr-1 text-gray-500" />
-                        {edu.institution}
+                    <div className="flex-1 pb-4">
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-3">
+                        <div>
+                          <h5 className="text-xl font-bold text-gray-900">{exp.role}</h5>
+                          <p className="text-purple-600 font-bold mt-1 flex items-center">
+                            {exp.company} <ExternalLink className="h-3 w-3 ml-2 opacity-50" />
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="mt-2 md:mt-0 border-purple-100 text-purple-600 rounded-lg px-4 py-1">
+                          <Clock className="h-3 w-3 mr-2" /> {exp.duration}
+                        </Badge>
+                      </div>
+                      <p className="text-gray-500 leading-relaxed">
+                        {exp.description || `Senior position at ${exp.company} focused on high-impact projects and professional excellence in the field of technology.`}
                       </p>
                     </div>
-                    <span className="text-gray-500 text-sm">{edu.year}</span>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
-          
-          {/* Verification Section */}
-          <div className="mb-8">
-            <h4 className="text-lg font-semibold mb-4">Verification Documents</h4>
+
+          {/* Sidebar Info Column */}
+          <div className="space-y-10">
             
-            {profileData.verificationStatus === 'verified' ? (
-              <div className="p-4 bg-green-50 rounded-md border border-green-200 flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                <p className="text-green-800">Your alumni status has been successfully verified.</p>
+            {/* Expertise Cloud */}
+            <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/20">
+              <h4 className="font-bold text-gray-900 mb-6 flex items-center text-sm uppercase tracking-widest">
+                <Award className="h-4 w-4 mr-3 text-indigo-600" /> Core Expertise
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {(profileData.skills.length > 0 ? profileData.skills : ['System Design', 'Strategic Mentoring', 'Product Management', 'Leadership']).map((skill, index) => (
+                  <Badge 
+                    key={index}
+                    className="bg-indigo-50/50 text-indigo-600 border-none px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors cursor-default"
+                  >
+                    {skill}
+                  </Badge>
+                ))}
               </div>
-            ) : profileData.verificationStatus === 'rejected' ? (
-              <div>
-                <div className="p-4 mb-4 bg-red-50 rounded-md border border-red-200">
-                  <div className="flex items-center mb-2">
-                    <XCircle className="h-5 w-5 text-red-600 mr-2" />
-                    <p className="text-red-800 font-medium">Verification failed</p>
-                  </div>
-                  <p className="text-red-700 ml-7 mb-4">
-                    We were unable to verify your alumni status based on the documents provided. Please upload valid graduation certificate or ID card.
-                  </p>
-                  <div className="ml-7">
-                    <Button className="bg-red-600 hover:bg-red-700">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Re-Upload Documents
-                    </Button>
-                  </div>
-                </div>
-                <div className="border rounded-md p-4">
-                  <h5 className="font-medium mb-2">Acceptable Documents:</h5>
-                  <ul className="list-disc pl-5 text-gray-700 text-sm space-y-1">
-                    <li>BVRIT Graduation Certificate</li>
-                    <li>BVRIT Student ID Card</li>
-                    <li>Degree Certificate with BVRIT name</li>
-                    <li>Official Transcript from BVRIT</li>
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-yellow-50 rounded-md border border-yellow-200">
-                <div className="flex items-center mb-2">
-                  <Calendar className="h-5 w-5 text-yellow-600 mr-2" />
-                  <p className="text-yellow-800 font-medium">Verification in progress</p>
-                </div>
-                <p className="text-yellow-700 ml-7">
-                  Your verification is being processed. We'll notify you once it's complete, typically within 1-2 business days.
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* Mentorship Preferences */}
-          <div>
-            <h4 className="text-lg font-semibold mb-4">Mentorship Preferences</h4>
-            
-            {isEditing ? (
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="willingToMentor"
-                    checked={profileData.willingToMentor}
-                    onChange={() => setProfileData({...profileData, willingToMentor: !profileData.willingToMentor})}
-                    className="h-4 w-4 mr-2"
-                  />
-                  <label htmlFor="willingToMentor">Available for Mentoring</label>
-                </div>
-                
-                {profileData.willingToMentor && (
-                  <div className="p-4 bg-blue-50 rounded-md border border-blue-200">
-                    <h5 className="font-medium mb-3">Mentor Preferences</h5>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm mb-1">Preferred Departments</label>
-                        <select className="w-full p-2 border rounded-md">
-                          <option value="any">Any Department</option>
-                          <option value="cse">Computer Science</option>
-                          <option value="it">Information Technology</option>
-                          <option value="ece">Electronics & Communication</option>
-                          <option value="eee">Electrical Engineering</option>
-                          <option value="mech">Mechanical Engineering</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm mb-1">Maximum Students</label>
-                        <select className="w-full p-2 border rounded-md">
-                          <option value="1">1 Student</option>
-                          <option value="2">2 Students</option>
-                          <option value="3">3 Students</option>
-                          <option value="5">5 Students</option>
-                          <option value="10">10 Students</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm mb-1">Mentorship Topics</label>
-                        <textarea
-                          className="w-full p-2 border rounded-md"
-                          placeholder="e.g., Career Guidance, Technical Skills, Interview Preparation"
-                          rows="3"
-                        ></textarea>
-                      </div>
+            </div>
+
+            {/* Academic Credentials */}
+            <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/20">
+              <h4 className="font-bold text-gray-900 mb-8 flex items-center text-sm uppercase tracking-widest">
+                <GraduationCap className="h-4 w-4 mr-3 text-purple-600" /> Academic Credentials
+              </h4>
+              <div className="space-y-8">
+                {profileData.education.map((edu, index) => (
+                  <div key={index} className="flex gap-4">
+                    <div className="h-10 w-10 bg-purple-50 rounded-xl flex-shrink-0 flex items-center justify-center">
+                      <BookOpen className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-gray-900 text-sm leading-tight">{edu.degree}</h5>
+                      <p className="text-gray-400 text-xs mt-1">{edu.institution}</p>
+                      <div className="mt-2 text-[10px] font-black text-purple-600 uppercase tracking-widest">Class of {edu.year}</div>
                     </div>
                   </div>
-                )}
+                ))}
               </div>
-            ) : (
-              profileData.willingToMentor ? (
-                <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
-                  <p className="flex items-center mb-3">
-                    <CheckCircle className="h-5 w-5 text-blue-600 mr-2" />
-                    <span className="font-medium text-blue-800">You are available as a mentor</span>
-                  </p>
-                  <p className="text-blue-700 text-sm mb-4">
-                    Students can send you mentorship requests based on your expertise and profile information.
-                  </p>
-                  <Button className="bg-blue-600 hover:bg-blue-700">
-                    View Current Mentees
-                  </Button>
+            </div>
+
+            {/* Verification Checklist */}
+            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden group">
+              <div className="relative z-10">
+                <h4 className="font-bold mb-6 flex items-center text-sm uppercase tracking-widest">
+                  <ShieldCheck className="h-4 w-4 mr-3" /> Verification Trace
+                </h4>
+                <div className="space-y-4">
+                  {[
+                    { label: 'Institutional Email', status: 'verified' },
+                    { label: 'Alumni ID Sync', status: 'verified' },
+                    { label: 'Industry Verification', status: 'pending' }
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center justify-between bg-white/10 p-3 rounded-2xl border border-white/10">
+                      <span className="text-xs font-medium">{item.label}</span>
+                      {item.status === 'verified' ? <CheckCircle className="h-4 w-4 text-emerald-400" /> : <Clock className="h-4 w-4 text-indigo-200 opacity-50" />}
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
-                  <p className="flex items-center">
-                    <XCircle className="h-5 w-5 text-gray-500 mr-2" />
-                    <span className="text-gray-700">You are not currently available for mentoring</span>
-                  </p>
-                </div>
-              )
-            )}
+                <Button className="w-full mt-8 bg-white text-indigo-700 hover:bg-indigo-50 rounded-2xl font-black text-xs uppercase tracking-widest h-12">
+                  <FileText className="h-4 w-4 mr-2" /> Download Credential
+                </Button>
+              </div>
+              <div className="absolute -right-10 -bottom-10 h-40 w-40 bg-white/10 rounded-full blur-3xl group-hover:scale-125 transition-transform duration-700"></div>
+            </div>
           </div>
+
         </div>
       </div>
     </div>

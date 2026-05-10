@@ -13,7 +13,8 @@ import {
   School, 
   Star, 
   Upload, 
-  Trash
+  Trash,
+  Github
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { 
@@ -258,6 +259,8 @@ const StudentProfile = () => {
         updatedAt: serverTimestamp()
       };
       
+      // Skip cloud storage uploads as the project is on the Spark (Free) plan
+      /* 
       // Upload new profile picture if selected
       if (profilePicFile) {
         const profilePicURL = await uploadProfilePicture();
@@ -273,6 +276,7 @@ const StudentProfile = () => {
           updatedData.resumeUrl = resumeURL;
         }
       }
+      */
       
       await updateDoc(userDocRef, updatedData);
       
@@ -959,7 +963,7 @@ const StudentProfile = () => {
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:text-blue-800 flex items-center text-sm"
                     >
-                      <GitHub className="h-4 w-4 mr-1" />
+                      <Github className="h-4 w-4 mr-1" />
                       View Project
                     </a>
                   )}

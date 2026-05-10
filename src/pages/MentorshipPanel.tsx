@@ -12,7 +12,11 @@ import {
   BarChart,
   User,
   Building2,
-  AlertTriangle
+  AlertTriangle,
+  Users,
+  Video,
+  FileText,
+  Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +35,8 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogFooter, 
-  DialogTrigger 
+  DialogTrigger,
+  DialogDescription
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { db, auth } from '@/firebase';
@@ -105,7 +110,6 @@ const MentorshipPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState("requests");
 
   useEffect(() => {
-    // Ensure the user is authenticated
     const currentUser = auth.currentUser;
     if (!currentUser) {
       setError("You must be logged in to view mentorship data");
@@ -113,7 +117,7 @@ const MentorshipPanel: React.FC = () => {
       return;
     }
 
-    // Listen for mentorship requests
+    // Requests Query
     const requestsQuery = query(
       collection(db, "mentorshipRequests"),
       where("mentorId", "==", currentUser.uid),
@@ -128,11 +132,10 @@ const MentorshipPanel: React.FC = () => {
       setMentorshipRequests(requests);
     }, (error) => {
       console.error("Error fetching mentorship requests:", error);
-      setError("Error loading mentorship requests. Please check your permissions.");
-      setLoading(false);
+      setError("Error loading requests. Ensure Firestore indexes are built.");
     });
 
-    // Listen for active mentorships
+    // Mentorships Query
     const mentorshipsQuery = query(
       collection(db, "mentorships"),
       where("mentorId", "==", currentUser.uid),
@@ -148,9 +151,6 @@ const MentorshipPanel: React.FC = () => {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching active mentorships:", error);
-      if (!error) { // Only set error if not already set
-        setError("Error loading mentorships. Please check your permissions.");
-      }
       setLoading(false);
     });
 
@@ -162,13 +162,9 @@ const MentorshipPanel: React.FC = () => {
 
   const handleAcceptRequest = async (request: MentorshipRequest) => {
     try {
-      // Update request status
       const requestRef = doc(db, "mentorshipRequests", request.id);
-      await updateDoc(requestRef, {
-        status: "accepted"
-      });
+      await updateDoc(requestRef, { status: "accepted" });
 
-      // Create new mentorship
       const mentorshipData = {
         mentorId: auth.currentUser?.uid,
         studentId: request.studentId,
@@ -184,73 +180,26 @@ const MentorshipPanel: React.FC = () => {
       };
 
       await addDoc(collection(db, "mentorships"), mentorshipData);
-      
-      // Notify student (in a real implementation, this might trigger a cloud function)
-      // You could add notification logic here
-
     } catch (error) {
       console.error("Error accepting request:", error);
-      setError("Failed to accept request. Please try again.");
     }
   };
 
   const handleRejectRequest = async (request: MentorshipRequest) => {
     try {
       const requestRef = doc(db, "mentorshipRequests", request.id);
-      await updateDoc(requestRef, {
-        status: "rejected"
-      });
+      await updateDoc(requestRef, { status: "rejected" });
     } catch (error) {
       console.error("Error rejecting request:", error);
-      setError("Failed to reject request. Please try again.");
-    }
-  };
-
-  const handleCompleteMentorship = async (mentorship: ActiveMentorship) => {
-    try {
-      const mentorshipRef = doc(db, "mentorships", mentorship.id);
-      await updateDoc(mentorshipRef, {
-        status: "completed",
-        completionDate: Timestamp.now()
-      });
-    } catch (error) {
-      console.error("Error completing mentorship:", error);
-      setError("Failed to complete mentorship. Please try again.");
-    }
-  };
-
-  const handlePauseMentorship = async (mentorship: ActiveMentorship) => {
-    try {
-      const mentorshipRef = doc(db, "mentorships", mentorship.id);
-      await updateDoc(mentorshipRef, {
-        status: "paused"
-      });
-    } catch (error) {
-      console.error("Error pausing mentorship:", error);
-      setError("Failed to pause mentorship. Please try again.");
-    }
-  };
-
-  const handleDeleteMentorship = async (mentorship: ActiveMentorship) => {
-    if (window.confirm("Are you sure you want to delete this mentorship? This action cannot be undone.")) {
-      try {
-        await deleteDoc(doc(db, "mentorships", mentorship.id));
-      } catch (error) {
-        console.error("Error deleting mentorship:", error);
-        setError("Failed to delete mentorship. Please try again.");
-      }
     }
   };
 
   const handleAddSession = async () => {
     if (!selectedMentorship) return;
-    
     try {
       const sessionDate = new Date(`${newSessionData.date}T${newSessionData.time}`);
-      
-      // Create a new session object
       const newSession: MentorshipSession = {
-        id: Date.now().toString(), // Simple ID generation
+        id: Date.now().toString(),
         date: Timestamp.fromDate(sessionDate),
         duration: newSessionData.duration,
         topic: newSessionData.topic,
@@ -258,358 +207,123 @@ const MentorshipPanel: React.FC = () => {
         status: "scheduled"
       };
       
-      // Get the current sessions and add the new one
       const mentorshipRef = doc(db, "mentorships", selectedMentorship.id);
-      const currentSessions = selectedMentorship.sessions || [];
-      const updatedSessions = [...currentSessions, newSession];
-      
+      const updatedSessions = [...(selectedMentorship.sessions || []), newSession];
       await updateDoc(mentorshipRef, {
         sessions: updatedSessions,
         lastUpdated: Timestamp.now()
-      });
-      
-      // Reset form
-      setNewSessionData({
-        date: "",
-        time: "",
-        duration: 30,
-        topic: "",
-        notes: ""
       });
       
       setNewSessionDialogOpen(false);
     } catch (error) {
       console.error("Error adding session:", error);
-      setError("Failed to add session. Please try again.");
     }
   };
 
-  const handleUpdateSessionStatus = async (
-    mentorship: ActiveMentorship, 
-    sessionId: string, 
-    newStatus: 'scheduled' | 'completed' | 'cancelled'
-  ) => {
-    try {
-      const mentorshipRef = doc(db, "mentorships", mentorship.id);
-      
-      // Update the specific session's status
-      const updatedSessions = mentorship.sessions.map(session => {
-        if (session.id === sessionId) {
-          return { ...session, status: newStatus };
-        }
-        return session;
-      });
-      
-      await updateDoc(mentorshipRef, {
-        sessions: updatedSessions,
-        lastUpdated: Timestamp.now()
-      });
-    } catch (error) {
-      console.error("Error updating session status:", error);
-      setError("Failed to update session status. Please try again.");
-    }
+  // Stats
+  const stats = {
+    pending: mentorshipRequests.filter(r => r.status === 'pending').length,
+    active: activeMentorships.filter(m => m.status === 'active').length,
+    completed: activeMentorships.filter(m => m.status === 'completed').length,
+    total: mentorshipRequests.length
   };
 
-  // Filter functions
-  const getFilteredRequests = () => {
-    return mentorshipRequests.filter(request => {
-      // Apply status filter
-      if (filterStatus !== "all" && request.status !== filterStatus) {
-        return false;
-      }
-      
-      // Apply search filter
-      if (searchQuery) {
-        const searchLower = searchQuery.toLowerCase();
-        return (
-          request.studentName.toLowerCase().includes(searchLower) ||
-          request.topic.toLowerCase().includes(searchLower)
-        );
-      }
-      
-      return true;
-    });
-  };
-
-  const getFilteredMentorships = () => {
-    return activeMentorships.filter(mentorship => {
-      // Apply status filter
-      if (filterStatus !== "all" && mentorship.status !== filterStatus) {
-        return false;
-      }
-      
-      // Apply search filter
-      if (searchQuery) {
-        const searchLower = searchQuery.toLowerCase();
-        return (
-          mentorship.studentName.toLowerCase().includes(searchLower) ||
-          mentorship.topic.toLowerCase().includes(searchLower)
-        );
-      }
-      
-      return true;
-    });
-  };
-
-  // Format date from Timestamp
   const formatDate = (timestamp?: Timestamp) => {
     if (!timestamp) return "N/A";
     return new Date(timestamp.seconds * 1000).toLocaleDateString();
   };
 
-  // Format upcoming sessions
-  const getUpcomingSessions = (mentorship: ActiveMentorship) => {
-    if (!mentorship.sessions || mentorship.sessions.length === 0) {
-      return "No scheduled sessions";
-    }
-    
-    const now = new Date();
-    const upcomingSessions = mentorship.sessions
-      .filter(session => 
-        session.status === "scheduled" && 
-        session.date.toDate() > now
-      )
-      .sort((a, b) => a.date.seconds - b.date.seconds);
-    
-    if (upcomingSessions.length === 0) {
-      return "No upcoming sessions";
-    }
-    
-    const nextSession = upcomingSessions[0];
-    return `Next: ${nextSession.date.toDate().toLocaleDateString()} - ${nextSession.topic}`;
-  };
-
-  // Get statistics
-  const getStats = () => {
-    const totalRequests = mentorshipRequests.length;
-    const pendingRequests = mentorshipRequests.filter(r => r.status === 'pending').length;
-    const activeMentorshipsCount = activeMentorships.filter(m => m.status === 'active').length;
-    const completedMentorships = activeMentorships.filter(m => m.status === 'completed').length;
-    
-    return { totalRequests, pendingRequests, activeMentorshipsCount, completedMentorships };
-  };
-
-  const stats = getStats();
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-500">Loading mentorship data...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 p-6">
-        <AlertTriangle className="h-10 w-10 text-red-500 mb-4" />
-        <div className="text-lg text-red-500 mb-4 font-medium">{error}</div>
-        <p className="text-gray-600 mb-6 text-center max-w-lg">
-          There was a problem loading your mentorship data. This may be due to network issues or insufficient permissions.
-        </p>
-        <Button onClick={() => window.location.reload()}>
-          Try Again
-        </Button>
-      </div>
-    );
-  }
+  if (loading) return <div className="p-20 text-center animate-pulse">Loading mentorship dashboard...</div>;
 
   return (
-    <div className="p-6 max-w-full">
-      {error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Mentorship Panel</h1>
-        <p className="text-gray-600">Manage your mentorship requests and active mentorships</p>
+    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+          Alumni Mentorship Panel
+        </h1>
+        <p className="text-gray-500 mt-1 flex items-center">
+          <Handshake className="h-4 w-4 mr-2" />
+          Empower the next generation through expert guidance
+        </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-blue-700">Pending Requests</p>
-              <p className="text-2xl font-bold text-blue-800">{stats.pendingRequests}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {[
+          { label: 'Pending Requests', value: stats.pending, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'Active Students', value: stats.active, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'Completed', value: stats.completed, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'Total Requests', value: stats.total, icon: BarChart, color: 'text-purple-600', bg: 'bg-purple-50' },
+        ].map((stat, i) => (
+          <div key={i} className={`${stat.bg} p-6 rounded-2xl border border-white shadow-sm hover:scale-[1.02] transition-transform`}>
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{stat.label}</p>
+                <p className={`text-3xl font-black mt-1 ${stat.color}`}>{stat.value}</p>
+              </div>
+              <div className="p-3 bg-white rounded-xl shadow-inner">
+                <stat.icon className={`h-6 w-6 ${stat.color}`} />
+              </div>
             </div>
-            <MessageCircle className="h-8 w-8 text-blue-500" />
           </div>
-        </div>
-        
-        <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-green-700">Active Mentorships</p>
-              <p className="text-2xl font-bold text-green-800">{stats.activeMentorshipsCount}</p>
-            </div>
-            <Handshake className="h-8 w-8 text-green-500" />
-          </div>
-        </div>
-        
-        <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-purple-700">Completed</p>
-              <p className="text-2xl font-bold text-purple-800">{stats.completedMentorships}</p>
-            </div>
-            <CheckCircle className="h-8 w-8 text-purple-500" />
-          </div>
-        </div>
-        
-        <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-amber-700">Total Requests</p>
-              <p className="text-2xl font-bold text-amber-800">{stats.totalRequests}</p>
-            </div>
-            <BarChart className="h-8 w-8 text-amber-500" />
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="flex-1">
-          <Input
-            placeholder="Search by name or topic..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full"
-            icon={<Search className="h-4 w-4" />}
-          />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+          <TabsList className="bg-gray-100/80 p-1 rounded-xl">
+            <TabsTrigger value="requests" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              New Requests
+              {stats.pending > 0 && <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-[10px] rounded-full">{stats.pending}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="active" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              My Mentees
+            </TabsTrigger>
+          </TabsList>
+          
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input 
+              placeholder="Search students..." 
+              className="pl-10 rounded-xl"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="w-full md:w-48">
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
-      {/* Tabs */}
-      <Tabs 
-        defaultValue="requests" 
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="w-full"
-      >
-        <TabsList className="mb-6">
-          <TabsTrigger value="requests">
-            Mentorship Requests
-            {stats.pendingRequests > 0 && (
-              <Badge variant="default" className="ml-2 bg-blue-600">{stats.pendingRequests}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="active">
-            Active Mentorships
-            {stats.activeMentorshipsCount > 0 && (
-              <Badge variant="default" className="ml-2 bg-green-600">{stats.activeMentorshipsCount}</Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Requests Tab */}
-        <TabsContent value="requests">
-          {getFilteredRequests().length === 0 ? (
-            <div className="text-center p-10 border border-dashed rounded-lg">
-              <MessageCircle className="h-10 w-10 text-gray-400 mx-auto mb-2" />
-              <h3 className="text-lg font-medium text-gray-700">No mentorship requests</h3>
-              <p className="text-gray-500 mt-1">When students request your mentorship, they'll appear here.</p>
+        <TabsContent value="requests" className="mt-0">
+          {mentorshipRequests.filter(r => r.status === 'pending').length === 0 ? (
+            <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed">
+              <MessageCircle className="h-10 w-10 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-gray-700">No pending requests</h3>
+              <p className="text-gray-500">Student requests will appear here when they seek your mentorship.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {getFilteredRequests().map((request) => (
-                <div 
-                  key={request.id} 
-                  className={`p-4 rounded-lg border ${
-                    request.status === 'pending' 
-                      ? 'border-blue-200 bg-blue-50'
-                      : request.status === 'accepted'
-                      ? 'border-green-200 bg-green-50'
-                      : 'border-gray-200 bg-gray-50'
-                  }`}
-                >
-                  <div className="flex flex-col md:flex-row justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                        {request.studentPhotoURL ? (
-                          <img 
-                            src={request.studentPhotoURL} 
-                            alt={request.studentName}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          <User className="h-6 w-6 text-gray-600" />
-                        )}
-                      </div>
-                      
-                      <div>
-                        <h3 className="font-medium text-gray-900">{request.studentName}</h3>
-                        <p className="text-sm text-gray-600">{request.studentBranch} • {request.studentYear}</p>
-                        <div className="mt-1">
-                          <Badge 
-                            variant="outline" 
-                            className={
-                              request.status === 'pending' 
-                                ? 'border-blue-500 text-blue-700' 
-                                : request.status === 'accepted'
-                                ? 'border-green-500 text-green-700'
-                                : 'border-red-500 text-red-700'
-                            }
-                          >
-                            {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                          </Badge>
-                        </div>
-                      </div>
+              {mentorshipRequests.filter(r => r.status === 'pending').map((request) => (
+                <div key={request.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between gap-6 hover:border-indigo-200 transition-colors">
+                  <div className="flex gap-4">
+                    <div className="h-14 w-14 rounded-2xl bg-gray-100 flex items-center justify-center overflow-hidden">
+                      {request.studentPhotoURL ? <img src={request.studentPhotoURL} className="h-full w-full object-cover" /> : <User className="h-8 w-8 text-gray-400" />}
                     </div>
-                    
-                    <div className="mt-3 md:mt-0 text-right flex flex-col items-end">
-                      <p className="text-sm text-gray-500">
-                        Requested: {formatDate(request.requestDate)}
-                      </p>
-                      
-                      <div className="mt-2">
-                        {request.status === 'pending' && (
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              onClick={() => handleAcceptRequest(request)}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Accept
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleRejectRequest(request)}
-                              className="border-red-300 text-red-700 hover:bg-red-50"
-                            >
-                              <XCircle className="h-4 w-4 mr-1" />
-                              Decline
-                            </Button>
-                          </div>
-                        )}
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{request.studentName}</h3>
+                      <p className="text-sm text-gray-500">{request.studentBranch} • Year {request.studentYear}</p>
+                      <div className="mt-3">
+                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-none">Topic: {request.topic}</Badge>
                       </div>
+                      <p className="text-sm text-gray-600 mt-4 bg-gray-50 p-4 rounded-xl italic">"{request.message}"</p>
                     </div>
                   </div>
-                  
-                  <div className="mt-3 pl-0 md:pl-14">
-                    <h4 className="font-medium text-gray-700">Topic: {request.topic}</h4>
-                    <p className="text-gray-600 mt-1">{request.message}</p>
+                  <div className="flex flex-row md:flex-col justify-end gap-2">
+                    <Button onClick={() => handleAcceptRequest(request)} className="bg-indigo-600 hover:bg-indigo-700 rounded-xl">
+                      <CheckCircle className="h-4 w-4 mr-2" /> Accept
+                    </Button>
+                    <Button onClick={() => handleRejectRequest(request)} variant="outline" className="rounded-xl text-red-600 hover:bg-red-50 border-red-100">
+                      <XCircle className="h-4 w-4 mr-2" /> Decline
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -617,380 +331,92 @@ const MentorshipPanel: React.FC = () => {
           )}
         </TabsContent>
 
-        {/* Active Mentorships Tab */}
-        <TabsContent value="active">
-          {getFilteredMentorships().length === 0 ? (
-            <div className="text-center p-10 border border-dashed rounded-lg">
-              <Handshake className="h-10 w-10 text-gray-400 mx-auto mb-2" />
-              <h3 className="text-lg font-medium text-gray-700">No active mentorships</h3>
-              <p className="text-gray-500 mt-1">When you accept mentorship requests, they'll appear here.</p>
+        <TabsContent value="active" className="mt-0">
+          {activeMentorships.length === 0 ? (
+            <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed">
+              <Handshake className="h-10 w-10 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-gray-700">No active mentees</h3>
+              <p className="text-gray-500">Accept a request to start your mentorship journey.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6">
-              {getFilteredMentorships().map((mentorship) => (
-                <div 
-                  key={mentorship.id} 
-                  className={`p-5 rounded-lg border ${
-                    mentorship.status === 'active' 
-                      ? 'border-green-200'
-                      : mentorship.status === 'completed'
-                      ? 'border-purple-200'
-                      : 'border-amber-200'
-                  }`}
-                >
-                  <div className="flex flex-col md:flex-row justify-between items-start">
-                    <div className="flex items-start gap-3">
-                      <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                        {mentorship.studentPhotoURL ? (
-                          <img 
-                            src={mentorship.studentPhotoURL} 
-                            alt={mentorship.studentName}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          <User className="h-6 w-6 text-gray-600" />
-                        )}
-                      </div>
-                      
-                      <div>
-                        <h3 className="font-medium text-gray-900">{mentorship.studentName}</h3>
-                        <p className="text-sm text-gray-600">{mentorship.studentBranch} • {mentorship.studentYear}</p>
-                        <div className="mt-1 flex items-center gap-2">
-                          <Badge 
-                            variant="outline" 
-                            className={
-                              mentorship.status === 'active' 
-                                ? 'border-green-500 text-green-700' 
-                                : mentorship.status === 'completed'
-                                ? 'border-purple-500 text-purple-700'
-                                : 'border-amber-500 text-amber-700'
-                            }
-                          >
-                            {mentorship.status.charAt(0).toUpperCase() + mentorship.status.slice(1)}
-                          </Badge>
-                          <span className="text-sm text-gray-500">
-                            Started: {formatDate(mentorship.startDate)}
-                          </span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {activeMentorships.map((mentorship) => (
+                <div key={mentorship.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+                  <div className="p-6">
+                    <div className="flex justify-between items-start">
+                      <div className="flex gap-4">
+                        <div className="h-14 w-14 rounded-2xl bg-indigo-50 flex items-center justify-center overflow-hidden">
+                          {mentorship.studentPhotoURL ? <img src={mentorship.studentPhotoURL} className="h-full w-full object-cover" /> : <User className="h-8 w-8 text-indigo-400" />}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{mentorship.studentName}</h3>
+                          <p className="text-sm text-gray-500">{mentorship.studentBranch}</p>
                         </div>
                       </div>
+                      <Badge className="bg-green-100 text-green-700 border-none">{mentorship.status.toUpperCase()}</Badge>
                     </div>
                     
-                    <div className="mt-3 md:mt-0 flex flex-col items-end">
-                      {mentorship.status === 'active' && (
-                        <div className="flex gap-2">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button 
-                                size="sm" 
-                                className="bg-blue-600 hover:bg-blue-700"
-                                onClick={() => setSelectedMentorship(mentorship)}
-                              >
-                                <Calendar className="h-4 w-4 mr-1" />
-                                Schedule Session
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Schedule New Session</DialogTitle>
-                              </DialogHeader>
-                              <div className="grid gap-4 py-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-medium">Date</label>
-                                    <Input 
-                                      type="date" 
-                                      value={newSessionData.date}
-                                      onChange={(e) => setNewSessionData({...newSessionData, date: e.target.value})}
-                                    />
-                                  </div>
-                                  <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-medium">Time</label>
-                                    <Input 
-                                      type="time" 
-                                      value={newSessionData.time}
-                                      onChange={(e) => setNewSessionData({...newSessionData, time: e.target.value})}
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <label className="text-sm font-medium">Duration (minutes)</label>
-                                  <Select 
-                                    value={newSessionData.duration.toString()}
-                                    onValueChange={(value) => setNewSessionData({...newSessionData, duration: parseInt(value)})}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select duration" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="15">15 minutes</SelectItem>
-                                      <SelectItem value="30">30 minutes</SelectItem>
-                                      <SelectItem value="45">45 minutes</SelectItem>
-                                      <SelectItem value="60">60 minutes</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <label className="text-sm font-medium">Topic</label>
-                                  <Input 
-                                    placeholder="What will you discuss?" 
-                                    value={newSessionData.topic}
-                                    onChange={(e) => setNewSessionData({...newSessionData, topic: e.target.value})}
-                                  />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <label className="text-sm font-medium">Notes (Optional)</label>
-                                  <Input 
-                                    placeholder="Any preparation or notes for the session" 
-                                    value={newSessionData.notes}
-                                    onChange={(e) => setNewSessionData({...newSessionData, notes: e.target.value})}
-                                  />
-                                </div>
-                              </div>
-                              <DialogFooter>
-                                <Button 
-                                  onClick={handleAddSession}
-                                  disabled={!newSessionData.date || !newSessionData.time || !newSessionData.topic}
-                                >
-                                  Schedule Session
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                          
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                className="border-purple-300 text-purple-700 hover:bg-purple-50"
-                                onClick={() => setSelectedMentorship(mentorship)}
-                              >
-                                <CheckCircle className="h-4 w-4 mr-1" />
-                                Complete
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Complete Mentorship</DialogTitle>
-                              </DialogHeader>
-                              <p className="py-4">
-                                Are you sure you want to mark this mentorship with <strong>{mentorship.studentName}</strong> as completed?
-                                This will move it to your completed mentorships history.
-                              </p>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setSelectedMentorship(null)}>Cancel</Button>
-                                <Button 
-                                  onClick={() => {
-                                    if (selectedMentorship) {
-                                      handleCompleteMentorship(selectedMentorship);
-                                      setSelectedMentorship(null);
-                                    }
-                                  }}
-                                >
-                                  Complete Mentorship
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                          
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                            onClick={() => handlePauseMentorship(mentorship)}
-                          >
-                            <Clock className="h-4 w-4 mr-1" />
-                            Pause
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {mentorship.status === 'paused' && (
-                        <Button 
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700"
-                          onClick={() => {
-                            const mentorshipRef = doc(db, "mentorships", mentorship.id);
-                            updateDoc(mentorshipRef, { status: "active" });
-                          }}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Resume Mentorship
-                        </Button>
-                      )}
-                      
-                      {/* Delete option for any status */}
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        className="text-red-600 hover:bg-red-50 hover:text-red-700 mt-2"
-                        onClick={() => handleDeleteMentorship(mentorship)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Delete
-                      </Button>
+                    <div className="mt-6 space-y-2">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <FileText className="h-4 w-4 mr-3 text-gray-400" />
+                        <span className="font-bold mr-2 text-gray-800">Goal:</span> {mentorship.topic}
+                      </div>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Calendar className="h-4 w-4 mr-3 text-gray-400" />
+                        <span className="font-bold mr-2 text-gray-800">Started:</span> {formatDate(mentorship.startDate)}
+                      </div>
+                    </div>
+
+                    <div className="mt-6 p-4 bg-gray-50 rounded-2xl flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <Video className="h-4 w-4 text-indigo-600" />
+                        <span className="text-xs font-bold text-gray-700">NEXT SESSION</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {mentorship.sessions?.find(s => s.status === 'scheduled')?.topic || 'None scheduled'}
+                      </span>
                     </div>
                   </div>
-                  
-                  <div className="mt-4 pl-0 md:pl-14">
-                    <h4 className="font-medium text-gray-700">Topic: {mentorship.topic}</h4>{/* Session Information */}
-                    <div className="mt-2">
-                      <p className="text-sm text-gray-600">{getUpcomingSessions(mentorship)}</p>
-                      
-                      {/* Collapsible Sessions List */}
-                      {mentorship.sessions && mentorship.sessions.length > 0 && (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="link" className="p-0 mt-1 h-auto">
-                              View {mentorship.sessions.length} session{mentorship.sessions.length !== 1 ? 's' : ''}
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-3xl">
-                            <DialogHeader>
-                              <DialogTitle>Sessions with {mentorship.studentName}</DialogTitle>
-                            </DialogHeader>
-                            <div className="max-h-96 overflow-y-auto">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b">
-                                    <th className="text-left py-2 px-3">Date</th>
-                                    <th className="text-left py-2 px-3">Topic</th>
-                                    <th className="text-left py-2 px-3">Duration</th>
-                                    <th className="text-left py-2 px-3">Status</th>
-                                    <th className="text-left py-2 px-3">Actions</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {mentorship.sessions
-                                    .sort((a, b) => b.date.seconds - a.date.seconds)
-                                    .map(session => (
-                                      <tr key={session.id} className="border-b hover:bg-gray-50">
-                                        <td className="py-2 px-3">
-                                          {session.date.toDate().toLocaleDateString()} {' '}
-                                          {session.date.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                        </td>
-                                        <td className="py-2 px-3">{session.topic}</td>
-                                        <td className="py-2 px-3">{session.duration} min</td>
-                                        <td className="py-2 px-3">
-                                          <Badge 
-                                            variant="outline" 
-                                            className={
-                                              session.status === 'scheduled' 
-                                                ? 'border-blue-500 text-blue-700' 
-                                                : session.status === 'completed'
-                                                ? 'border-green-500 text-green-700'
-                                                : 'border-red-500 text-red-700'
-                                            }
-                                          >
-                                            {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
-                                          </Badge>
-                                        </td>
-                                        <td className="py-2 px-3">
-                                          {session.status === 'scheduled' && (
-                                            <div className="flex gap-1">
-                                              <Button 
-                                                size="sm" 
-                                                variant="ghost"
-                                                className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                                onClick={() => handleUpdateSessionStatus(mentorship, session.id, 'completed')}
-                                              >
-                                                <CheckCircle className="h-4 w-4" />
-                                              </Button>
-                                              <Button 
-                                                size="sm" 
-                                                variant="ghost"
-                                                className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                onClick={() => handleUpdateSessionStatus(mentorship, session.id, 'cancelled')}
-                                              >
-                                                <XCircle className="h-4 w-4" />
-                                              </Button>
-                                            </div>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      )}
-                    </div>
-                    
-                    {/* Notes Display (if any) */}
-                    {mentorship.notes && (
-                      <div className="mt-3 bg-gray-50 p-3 rounded-md">
-                        <p className="text-sm text-gray-700">{mentorship.notes}</p>
-                      </div>
-                    )}
-                    
-                    {/* Quick Actions */}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                        onClick={() => {
-                          // Open chat with student in a real implementation
-                          alert(`Chat with ${mentorship.studentName} would open here`);
-                        }}
-                      >
-                        <MessageCircle className="h-4 w-4 mr-1" />
-                        Message
-                      </Button>
-                      
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="text-purple-600 border-purple-200 hover:bg-purple-50"
-                        onClick={() => {
-                          // Open student profile in a real implementation
-                          alert(`Profile for ${mentorship.studentName} would open here`);
-                        }}
-                      >
-                        <User className="h-4 w-4 mr-1" />
-                        View Profile
-                      </Button>
-                      
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="text-amber-600 border-amber-200 hover:bg-amber-50"
-                          >
-                            <Building2 className="h-4 w-4 mr-1" />
-                            Add Notes
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Add Notes for {mentorship.studentName}</DialogTitle>
-                          </DialogHeader>
-                          <div className="py-4">
-                            <textarea 
-                              className="w-full p-3 border border-gray-300 rounded-md h-40"
-                              placeholder="Add your notes here..."
-                              defaultValue={mentorship.notes || ''}
-                            ></textarea>
+
+                  <div className="flex border-t border-gray-50">
+                    <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          className="flex-1 rounded-none py-6 h-auto hover:bg-indigo-50 hover:text-indigo-600"
+                          onClick={() => setSelectedMentorship(mentorship)}
+                        >
+                          <Plus className="h-4 w-4 mr-2" /> Schedule
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Schedule Session</DialogTitle>
+                          <DialogDescription>Arrange a meeting with {selectedMentorship?.studentName}</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <Input type="date" value={newSessionData.date} onChange={e => setNewSessionData({...newSessionData, date: e.target.value})} />
+                            <Input type="time" value={newSessionData.time} onChange={e => setNewSessionData({...newSessionData, time: e.target.value})} />
                           </div>
-                          <DialogFooter>
-                            <Button 
-                              onClick={() => {
-                                const textarea = document.querySelector('textarea');
-                                if (textarea) {
-                                  const notes = textarea.value;
-                                  const mentorshipRef = doc(db, "mentorships", mentorship.id);
-                                  updateDoc(mentorshipRef, { notes });
-                                }
-                              }}
-                            >
-                              Save Notes
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
+                          <Input placeholder="Session Topic" value={newSessionData.topic} onChange={e => setNewSessionData({...newSessionData, topic: e.target.value})} />
+                          <Select value={newSessionData.duration.toString()} onValueChange={v => setNewSessionData({...newSessionData, duration: parseInt(v)})}>
+                            <SelectTrigger><SelectValue placeholder="Duration" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="30">30 Minutes</SelectItem>
+                              <SelectItem value="60">60 Minutes</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <DialogFooter>
+                          <Button onClick={handleAddSession} className="w-full bg-indigo-600">Create Session</Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                    <div className="w-[1px] bg-gray-50"></div>
+                    <Button variant="ghost" className="flex-1 rounded-none py-6 h-auto hover:bg-indigo-50 hover:text-indigo-600">
+                      <MessageCircle className="h-4 w-4 mr-2" /> Message
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -998,76 +424,6 @@ const MentorshipPanel: React.FC = () => {
           )}
         </TabsContent>
       </Tabs>
-
-      {/* Add Session Dialog */}
-      <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Schedule New Session</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Date</label>
-                <Input 
-                  type="date" 
-                  value={newSessionData.date}
-                  onChange={(e) => setNewSessionData({...newSessionData, date: e.target.value})}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Time</label>
-                <Input 
-                  type="time" 
-                  value={newSessionData.time}
-                  onChange={(e) => setNewSessionData({...newSessionData, time: e.target.value})}
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Duration (minutes)</label>
-              <Select 
-                value={newSessionData.duration.toString()}
-                onValueChange={(value) => setNewSessionData({...newSessionData, duration: parseInt(value)})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15 minutes</SelectItem>
-                  <SelectItem value="30">30 minutes</SelectItem>
-                  <SelectItem value="45">45 minutes</SelectItem>
-                  <SelectItem value="60">60 minutes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Topic</label>
-              <Input 
-                placeholder="What will you discuss?" 
-                value={newSessionData.topic}
-                onChange={(e) => setNewSessionData({...newSessionData, topic: e.target.value})}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Notes (Optional)</label>
-              <Input 
-                placeholder="Any preparation or notes for the session" 
-                value={newSessionData.notes}
-                onChange={(e) => setNewSessionData({...newSessionData, notes: e.target.value})}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button 
-              onClick={handleAddSession}
-              disabled={!newSessionData.date || !newSessionData.time || !newSessionData.topic}
-            >
-              Schedule Session
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

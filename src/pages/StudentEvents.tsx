@@ -93,11 +93,28 @@ const getCategoryColor = (category) => {
   }
 };
 
+// Event Interface
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  eventDate: any;
+  location?: string;
+  category: string;
+  eventType: 'online' | 'in-person';
+  eventLink?: string;
+  capacity?: number;
+  attendees?: string[];
+  creatorId: string;
+  creatorEmail: string;
+  createdAt: any;
+}
+
 const StudentEvents = () => {
   // State for events
-  const [events, setEvents] = useState([]);
-  const [filteredEvents, setFilteredEvents] = useState([]);
-  const [attendingEvents, setAttendingEvents] = useState([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
+  const [attendingEvents, setAttendingEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('upcoming');
   
@@ -160,7 +177,7 @@ const StudentEvents = () => {
           ...doc.data(),
           eventDate: doc.data().eventDate?.toDate(),
           createdAt: doc.data().createdAt?.toDate()
-        }));
+        } as Event));
         
         setEvents(eventsData);
         
@@ -193,7 +210,7 @@ const StudentEvents = () => {
           ...doc.data(),
           eventDate: doc.data().eventDate?.toDate(),
           createdAt: doc.data().createdAt?.toDate()
-        }));
+        } as Event));
         
         setEvents(eventsData);
         setFilteredEvents(eventsData);
@@ -216,7 +233,7 @@ const StudentEvents = () => {
   }, [userId]);
 
   // Apply filters function
-  const applyFilters = (eventsData, search, category, type, tab) => {
+  const applyFilters = (eventsData: Event[], search: string, category: string, type: string, tab: string) => {
     let filtered = [...eventsData];
     
     // Filter by search query
@@ -300,13 +317,13 @@ const StudentEvents = () => {
   };
   
   // View event details
-  const viewEventDetails = (event) => {
+  const viewEventDetails = (event: Event) => {
     setSelectedEvent(event);
     setIsDetailsDialogOpen(true);
   };
 
   // Check if user is attending an event
-  const isAttending = (event) => {
+  const isAttending = (event: Event) => {
     return event.attendees?.includes(userId);
   };
   
@@ -339,7 +356,7 @@ const StudentEvents = () => {
   };
 
   // Calculate if an event is at capacity
-  const isEventFull = (event) => {
+  const isEventFull = (event: Event) => {
     return event.capacity && event.attendees && event.attendees.length >= event.capacity;
   };
 
@@ -684,14 +701,16 @@ const StudentEvents = () => {
             <>
               <DialogHeader>
                 <DialogTitle>{selectedEvent.title}</DialogTitle>
-                <DialogDescription>
-                  {selectedEvent.category && (
-                    <Badge 
-                      className={`mt-2 ${getCategoryColor(selectedEvent.category).replace('bg-', 'bg-opacity-80 text-white bg-')}`}
-                    >
-                      {selectedEvent.category}
-                    </Badge>
-                  )}
+                <DialogDescription asChild>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {selectedEvent.category && (
+                      <Badge 
+                        className={getCategoryColor(selectedEvent.category).replace('bg-', 'bg-opacity-80 text-white bg-')}
+                      >
+                        {selectedEvent.category}
+                      </Badge>
+                    )}
+                  </div>
                 </DialogDescription>
               </DialogHeader>
               
@@ -785,6 +804,15 @@ const StudentEvents = () => {
 };
 
 // Event Card Component
+interface EventCardProps {
+  event: Event;
+  onRSVP?: (eventId: string, isGoing: boolean) => void;
+  onViewDetails: (event: Event) => void;
+  isAttending: boolean;
+  isEventFull?: boolean;
+  isPast?: boolean;
+}
+
 const EventCard = ({ 
     event, 
     onRSVP, 
@@ -792,7 +820,7 @@ const EventCard = ({
     isAttending, 
     isEventFull = false,
     isPast = false
-  }) => {
+  }: EventCardProps) => {
     const isPastEvent = isPast || (event.eventDate && isBefore(event.eventDate, new Date()));
     
     return (

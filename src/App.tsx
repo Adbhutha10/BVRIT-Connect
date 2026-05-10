@@ -27,6 +27,9 @@ import Verification from "./pages/Verification";
 import StudentDashboard from "./pages/StudentDashboard";
 import AlumniDashboard from "./pages/AlumniDashboard";
 import StudentCommunity from "./pages/StudentCommunity"; 
+import StudentMentorshipPanel from "./pages/StudentMentorshipPanel";
+import StudentCommunication from "./pages/StudentCommunication";
+import ProfileAndVerification from "./pages/ProfileAndVerification";
 
 const queryClient = new QueryClient();
 
@@ -138,6 +141,30 @@ const App = () => (
               element={
                 <PrivateRoute>
                   <AlumniDashboard />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mentorship-panel"
+              element={
+                <PrivateRoute>
+                  <StudentMentorshipPanel />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/communication-tracker"
+              element={
+                <PrivateRoute>
+                  <StudentCommunication />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/profile-verification"
+              element={
+                <PrivateRoute>
+                  <ProfileAndVerification />
                 </PrivateRoute>
               }
             />

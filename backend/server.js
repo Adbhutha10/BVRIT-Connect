@@ -20,7 +20,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 const verificationRoutes = require('./routes/verification');
+const resumeRoutes = require('./routes/resume');
+const aiRoutes = require('./routes/ai');
 app.use('/api/verification', verificationRoutes);
+app.use('/api/resume', resumeRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -30,9 +34,9 @@ app.get('/api/health', (req, res) => {
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Error:', error);
-  res.status(500).json({ 
-    error: 'Something went wrong!', 
-    message: error.message 
+  res.status(500).json({
+    error: 'Something went wrong!',
+    message: error.message
   });
 });
 

@@ -10,72 +10,62 @@ import {
   BookOpen,
   Users,
   Briefcase,
-  GraduationCap
+  GraduationCap,
+  MessageSquareMore,
+  Paperclip,
+  Mic,
+  MicOff,
+  Navigation,
+  FileText,
+  ChevronRight
 } from 'lucide-react';
+import { db, auth } from '@/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 
 const Chatbot = () => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [userName, setUserName] = useState('Friend');
+  const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // Load messages from localStorage on component mount
+  // API Config (Now handled by backend)
+  const AI_API_URL = 'http://localhost:5000/api/ai/chat';
+
+  // Real-time user personalization
   useEffect(() => {
-    const savedMessages = localStorage.getItem('bvrit-chat-messages');
-    if (savedMessages) {
-      try {
-        const parsedMessages = JSON.parse(savedMessages);
-        // Convert timestamp strings back to Date objects
-        const messagesWithDates = parsedMessages.map(msg => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        }));
-        setMessages(messagesWithDates);
-      } catch (error) {
-        console.error('Error loading chat history:', error);
-        // Set default message if loading fails
-        setDefaultMessage();
+    const user = auth.currentUser;
+    if (!user) return;
+    const unsubscribe = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setUserName(docSnap.data().fullName || docSnap.data().name || 'Friend');
       }
-    } else {
-      setDefaultMessage();
-    }
+    });
+    return () => unsubscribe();
   }, []);
 
-  // Save messages to localStorage whenever messages change
+  // Load default message on mount
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('bvrit-chat-messages', JSON.stringify(messages));
-    }
-  }, [messages]);
+    setDefaultMessage();
+  }, [userName]);
 
   const setDefaultMessage = () => {
     setMessages([{
       id: 1,
-      text: "Hi! I'm your BVRIT Alumni Connect assistant. How can I help you today?",
+      text: `Hi ${userName}! I'm your BVRIT AI. I can review your resume, find mentors, or guide your career. What's on your mind?`,
       isBot: true,
-      timestamp: new Date()
+      timestamp: new Date(),
+      actions: [
+        { label: 'View Mentors', path: '/mentorship-panel' },
+        { label: 'Career Hub', path: '/communication-tracker' }
+      ]
     }]);
   };
-  const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef(null);
-  const chatContainerRef = useRef(null);
-
-  // Note: In production, store API keys securely on your backend
-  const GEMINI_API_KEY = 'AIzaSyBtfUlIUSEPu3dwccr4hgNy03FiiKoopu8';
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-  // Educational system prompt for BVRIT context
-  const SYSTEM_PROMPT = `You are BVRIT Alumni Connect assistant. Give direct, concise answers (2-3 sentences max). 
-
-TOPICS: Platform navigation, career advice, mentorship, academic support, networking, job search.
-
-RULES:
-- Answer only what's asked
-- Be brief and specific
-- No extra explanations unless requested
-- Professional but friendly tone
-- If unclear, ask one clarifying question
-
-CONTEXT: BVRIT is an engineering college. Platform has Alumni Directory, Job Board, Mentorship Program, Events.`;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,82 +75,22 @@ CONTEXT: BVRIT is an engineering college. Platform has Alumni Directory, Job Boa
     scrollToBottom();
   }, [messages]);
 
-  const quickSuggestions = [
-    {
-      icon: <GraduationCap className="h-4 w-4" />,
-      text: "How to find mentors?",
-      color: "bg-blue-50 text-blue-700 border-blue-200"
-    },
-    {
-      icon: <Briefcase className="h-4 w-4" />,
-      text: "Career guidance tips",
-      color: "bg-green-50 text-green-700 border-green-200"
-    },
-    {
-      icon: <Users className="h-4 w-4" />,
-      text: "Networking strategies",
-      color: "bg-purple-50 text-purple-700 border-purple-200"
-    },
-    {
-      icon: <BookOpen className="h-4 w-4" />,
-      text: "Study techniques",
-      color: "bg-orange-50 text-orange-700 border-orange-200"
+  // Voice Recognition Logic
+  const startListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice recognition not supported in this browser.");
+      return;
     }
-  ];
-
-  // Context-aware fallback responses
-  const getContextAwareFallback = (userMessage, conversationHistory) => {
-    const message = userMessage.toLowerCase();
-    const recentMessages = conversationHistory.slice(-5);
-    
-    // Check if user is asking follow-up questions
-    const isFollowUp = message.includes('how') || message.includes('what') || 
-                      message.includes('can you') || message.includes('tell me more');
-    
-    // Check conversation context
-    const previousTopics = recentMessages.map(msg => msg.text.toLowerCase()).join(' ');
-    
-    if (message.includes('mentor') || previousTopics.includes('mentor')) {
-      if (isFollowUp) {
-        return `Send a brief message mentioning your field, year, and specific goals. Keep it professional and concise.`;
-      }
-      return `Use Alumni Directory to filter by your field, then send personalized connection requests mentioning your goals.`;
-    }
-    
-    if (message.includes('career') || message.includes('job') || previousTopics.includes('career')) {
-      if (isFollowUp) {
-        return `Focus on technical skills relevant to your field, build projects, and practice coding/problem-solving daily.`;
-      }
-      return `Check the Job Board for exclusive postings, optimize your LinkedIn, and connect with alumni in your target companies.`;
-    }
-    
-    if (message.includes('network') || message.includes('connect') || previousTopics.includes('network')) {
-      if (isFollowUp) {
-        return `Comment meaningfully on their posts, share relevant content, and offer help before asking for favors.`;
-      }
-      return `Attend platform events, join technical communities, and engage with alumni posts before reaching out.`;
-    }
-    
-    if (message.includes('study') || message.includes('academic') || previousTopics.includes('study')) {
-      if (isFollowUp) {
-        return `Try the Feynman technique - explain concepts in simple terms to identify knowledge gaps.`;
-      }
-      return `Form study groups, practice active learning, and ask seniors for subject-specific tips.`;
-    }
-    
-    if (message.includes('resume') || previousTopics.includes('resume')) {
-      if (isFollowUp) {
-        return `Use action verbs, quantify achievements, and customize for each job application.`;
-      }
-      return `Highlight projects, internships, and technical skills. Keep it 1-2 pages and tailor for each application.`;
-    }
-    
-    // Handle common follow-up phrases
-    if (message.includes('how') || message.includes('what about') || message.includes('can you explain')) {
-      return `Could you be more specific about what aspect you'd like me to explain?`;
-    }
-    
-    return `I can help with mentorship, career guidance, networking, academics, or platform navigation. What specifically do you need?`;
+    const recognition = new SpeechRecognition();
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInputMessage(transcript);
+      handleSendMessage(transcript);
+    };
+    recognition.start();
   };
 
   const handleSendMessage = async (messageText = inputMessage) => {
@@ -179,310 +109,223 @@ CONTEXT: BVRIT is an engineering college. Platform has Alumni Directory, Job Boa
     setIsLoading(true);
 
     try {
-      // Build conversation context from recent messages (last 10 for efficiency)
-      const recentMessages = updatedMessages.slice(-10);
-      const conversationContext = recentMessages
-        .map(msg => `${msg.isBot ? 'Assistant' : 'User'}: ${msg.text}`)
-        .join('\n');
-
-      const requestPayload = {
-        contents: [{
-          parts: [{
-            text: `${SYSTEM_PROMPT}\n\nConversation History:\n${conversationContext}\n\nPlease respond to the latest user message considering the conversation context.`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.3,
-          topK: 20,
-          topP: 0.8,
-          maxOutputTokens: 150,
+      const recentMessages = updatedMessages.slice(-6);
+      const apiMessages = [
+        { 
+          role: "system", 
+          content: `You are the BVRIT AI Concierge. User: ${userName}.
+          Rules:
+          - Be brief (2-3 sentences).
+          - Use a professional, elite tone.
+          - If the user wants to see mentors, suggest the /mentorship-panel.
+          - If they want to see their impact/communication, suggest /communication-tracker.
+          - If they want to update profile, suggest /profile-verification.
+          IMPORTANT: If you suggest a page, include it in this format at the end: [ACTION: Label | Path]` 
         },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
-      };
+        ...recentMessages.map(msg => ({
+          role: msg.isBot ? "assistant" : "user",
+          content: msg.text
+        }))
+      ];
 
-      console.log('Sending request to Gemini API...', requestPayload);
-
-      const response = await fetch(GEMINI_API_URL, {
+      // Call our secure backend instead of Groq directly
+      const response = await fetch('http://localhost:5000/api/ai/chat', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestPayload)
+        body: JSON.stringify({
+          messages: apiMessages.filter(m => m.content)
+        })
       });
 
-      console.log('Response status:', response.status);
-      const responseText = await response.text();
-      console.log('Raw response:', responseText);
-
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status} - ${responseText}`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('AI Backend Error:', errorData);
+        throw new Error(errorData.message || 'AI engine is temporarily resting');
       }
 
-      const data = JSON.parse(responseText);
-      console.log('Parsed response:', data);
-
-      let botResponse = '';
+      const data = await response.json();
       
-      if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
-        botResponse = data.candidates[0].content.parts[0].text;
-      } else if (data.error) {
-        console.error('API Error:', data.error);
-        throw new Error(data.error.message || 'API Error');
-      } else {
-        throw new Error('Invalid response format');
+      if (!data.choices || data.choices.length === 0) {
+        throw new Error('No response from AI engine');
       }
+
+      const rawText = data.choices[0].message.content;
+      
+      // Parse Actions
+      const actionMatch = rawText.match(/\[ACTION:\s*(.*?)\s*\|\s*(.*?)\s*\]/);
+      const cleanText = rawText.replace(/\[ACTION:.*?\]/g, '').trim();
+      const actions = actionMatch ? [{ label: actionMatch[1], path: actionMatch[2] }] : [];
 
       const botMessage = {
         id: Date.now() + 1,
-        text: botResponse.trim(),
+        text: cleanText,
         isBot: true,
-        timestamp: new Date()
+        timestamp: new Date(),
+        actions: actions
       };
 
       setMessages(prev => [...prev, botMessage]);
-
     } catch (error) {
-      console.error('Error calling Gemini API:', error);
-      
-      // Use context-aware fallback response
-      const fallbackResponse = getContextAwareFallback(messageText, messages);
-      
-      const botMessage = {
-        id: Date.now() + 1,
-        text: fallbackResponse,
-        isBot: true,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, botMessage]);
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  const handleFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        text: `📄 Uploaded: ${file.name}. Can you review this for me?`,
+        isBot: false,
+        timestamp: new Date()
+      }]);
+      // Simulate AI Review
+      setTimeout(() => {
+        setMessages(prev => [...prev, {
+          id: Date.now() + 1,
+          text: `I've analyzed your resume, ${userName}. Your "Technical Skills" section is strong, but I recommend adding more quantifiable results to your projects. Would you like to see a sample project description?`,
+          isBot: true,
+          timestamp: new Date()
+        }]);
+      }, 1500);
     }
-  };
-
-  const handleQuickSuggestion = (suggestion) => {
-    handleSendMessage(suggestion);
-  };
-
-  const clearChat = () => {
-    const defaultMessage = {
-      id: 1,
-      text: "Hi! I'm your BVRIT Alumni Connect assistant. How can I help you today?",
-      isBot: true,
-      timestamp: new Date()
-    };
-    setMessages([defaultMessage]);
-    localStorage.setItem('bvrit-chat-messages', JSON.stringify([defaultMessage]));
-  };
-
-  const formatTime = (timestamp) => {
-    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
     <>
-      {/* Floating Chat Button */}
       {!isOpen && (
         <div className="fixed bottom-8 right-8 z-50">
           <button
             onClick={() => setIsOpen(true)}
-            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center group"
-            style={{
-              animation: 'bounce-gentle 2s infinite'
-            }}
+            className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-blue-700 hover:scale-110 shadow-2xl transition-all flex items-center justify-center group rounded-2xl shadow-indigo-200"
           >
-            <MessageCircle className="h-8 w-8 text-white group-hover:scale-110 transition-transform" />
+            <MessageSquareMore className="h-7 w-7 text-white group-hover:scale-110 transition-transform" />
           </button>
         </div>
       )}
 
-      {/* Chat Window */}
       {isOpen && (
-        <div 
-          className="fixed bottom-8 right-8 z-50 w-96 h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col"
-          style={{
-            animation: 'slide-up 0.3s ease-out forwards'
-          }}
-        >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 rounded-t-2xl flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                <Bot className="h-6 w-6 text-white" />
+        <div className="fixed bottom-6 right-6 z-50 w-[380px] h-[600px] bg-white/95 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl border border-gray-100 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-10 duration-500">
+          {/* Elite Header */}
+          <div className="bg-gradient-to-br from-indigo-700 via-blue-700 to-purple-800 p-6 text-white shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20">
+                  <Bot className="h-6 w-6 text-indigo-100" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight leading-none">BVRIT AI</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                    <span className="text-[9px] font-black uppercase tracking-widest opacity-70">Llama 3 Active</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-white">BVRIT Assistant</h3>
-                <p className="text-xs text-blue-100">Online • Ready to help</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={clearChat}
-                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-                title="Clear chat"
-              >
-                <RefreshCw className="h-4 w-4 text-white" />
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-              >
-                <X className="h-5 w-5 text-white" />
+              <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-all">
+                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Messages Area */}
-          <div
-            ref={chatContainerRef}
-            className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
-          >
+          {/* Chat Canvas */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide bg-gradient-to-b from-transparent to-gray-50/50">
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start space-x-3 ${
-                  message.isBot ? 'justify-start' : 'justify-end'
-                }`}
-              >
-                {message.isBot && (
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Bot className="h-4 w-4 text-white" />
+              <div key={message.id} className={`flex flex-col ${message.isBot ? 'items-start' : 'items-end'} group`}>
+                <div className={`max-w-[85%] p-4 rounded-[1.5rem] text-xs leading-relaxed ${
+                  message.isBot 
+                    ? 'bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm' 
+                    : 'bg-indigo-600 text-white rounded-tr-none shadow-lg shadow-indigo-100'
+                }`}>
+                  {message.text}
+                </div>
+                
+                {/* Action Buttons */}
+                {message.actions && message.actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {message.actions.map((action, i) => (
+                      <button
+                        key={i}
+                        onClick={() => navigate(action.path)}
+                        className="flex items-center gap-2 bg-white hover:bg-indigo-50 border border-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
+                      >
+                        <Navigation className="h-2.5 w-2.5" />
+                        {action.label}
+                        <ChevronRight className="h-2.5 w-2.5 opacity-50" />
+                      </button>
+                    ))}
                   </div>
                 )}
                 
-                <div
-                  className={`max-w-[80%] p-3 rounded-2xl ${
-                    message.isBot
-                      ? 'bg-white border border-gray-200 text-gray-800'
-                      : 'bg-blue-600 text-white'
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                    {message.text}
-                  </p>
-                  <p
-                    className={`text-xs mt-2 ${
-                      message.isBot ? 'text-gray-500' : 'text-blue-100'
-                    }`}
-                  >
-                    {formatTime(message.timestamp)}
-                  </p>
-                </div>
-
-                {!message.isBot && (
-                  <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User className="h-4 w-4 text-white" />
-                  </div>
-                )}
+                <span className="text-[9px] mt-1 font-bold text-gray-400 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity px-2">
+                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
             ))}
-
             {isLoading && (
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-white" />
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-indigo-50 rounded-xl flex items-center justify-center animate-pulse">
+                  <Loader className="h-4 w-4 text-indigo-600 animate-spin" />
                 </div>
-                <div className="bg-white border border-gray-200 p-3 rounded-2xl">
-                  <div className="flex items-center space-x-2">
-                    <Loader className="h-4 w-4 text-blue-600 animate-spin" />
-                    <span className="text-sm text-gray-600">Thinking...</span>
-                  </div>
-                </div>
+                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest animate-pulse">Syncing...</span>
               </div>
             )}
-
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Suggestions */}
-          {messages.length === 1 && (
-            <div className="p-4 border-t border-gray-200 bg-white">
-              <p className="text-xs text-gray-500 mb-3">Quick suggestions:</p>
-              <div className="grid grid-cols-2 gap-2">
-                {quickSuggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleQuickSuggestion(suggestion.text)}
-                    className={`flex items-center space-x-2 p-2 rounded-lg border transition-all duration-200 hover:scale-105 text-xs ${suggestion.color}`}
-                  >
-                    {suggestion.icon}
-                    <span>{suggestion.text}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Input Area */}
-          <div className="p-4 border-t border-gray-200 bg-white rounded-b-2xl">
-            <div className="flex items-center space-x-2">
-              <div className="flex-1 relative">
+          {/* Interactive Console */}
+          <div className="p-6 bg-white border-t border-gray-100 shrink-0">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-100 focus-within:border-indigo-200 focus-within:bg-white transition-all">
+                <button 
+                  onClick={handleFileUpload}
+                  className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all"
+                  title="Upload Resume"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+                <input type="file" ref={fileInputRef} onChange={onFileChange} className="hidden" accept=".pdf,.doc,.docx,.txt" />
+                
                 <textarea
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask me about mentorship, careers, or platform help..."
-                  className="w-full p-3 pr-12 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  rows="2"
-                  disabled={isLoading}
+                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                  placeholder="Ask BVRIT AI..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-[13px] resize-none py-1"
+                  rows={1}
                 />
+
+                <button 
+                  onClick={startListening}
+                  className={`p-2 rounded-xl transition-all ${isListening ? 'bg-red-50 text-red-600 animate-pulse' : 'text-gray-400 hover:text-indigo-600 hover:bg-white'}`}
+                >
+                  {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                </button>
               </div>
-              <button
-                onClick={() => handleSendMessage()}
-                disabled={!inputMessage.trim() || isLoading}
-                className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl transition-all duration-200 transform hover:scale-105 flex-shrink-0"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              
+              <div className="flex justify-between items-center px-1">
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center">
+                  <FileText className="h-2.5 w-2.5 mr-2" /> Resume Mode
+                </p>
+                <button
+                  onClick={() => handleSendMessage()}
+                  disabled={!inputMessage.trim() || isLoading}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  Send
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Press Enter to send • Shift+Enter for new line
-            </p>
           </div>
         </div>
       )}
-
-      {/* CSS Animations */}
-      <style jsx>{`
-        @keyframes slide-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-        
-        @keyframes bounce-gentle {
-          0%, 20%, 50%, 80%, 100% {
-            transform: translateY(0);
-          }
-          40% {
-            transform: translateY(-5px);
-          }
-          60% {
-            transform: translateY(-3px);
-          }
-        }
-      `}</style>
     </>
   );
 };

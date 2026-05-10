@@ -4,11 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-  FileText, 
-  Upload, 
-  Github, 
-  Linkedin, 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { toast } from '@/hooks/use-toast';
+import { auth, db, storage } from '@/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import {
+  FileText,
+  Upload,
+  Github,
+  Linkedin,
   GraduationCap,
   BookOpen,
   Code,
@@ -18,93 +30,84 @@ import {
   Clock,
   Globe,
   Award,
-  DollarSign
+  DollarSign,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { toast } from '@/hooks/use-toast';
-import { auth, db, storage } from '@/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const AlumniProfileForm = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [resumeFile, setResumeFile] = useState(null);
-  const [profilePictureFile, setProfilePictureFile] = useState(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+
   const [formData, setFormData] = useState({
     // Basic Information
     fullName: '',
     email: '',
     graduationYear: '',
     branch: '',
-    
+
     // Professional Details
     currentJobTitle: '',
     companyName: '',
     industry: '',
     yearsOfExperience: '',
     location: '',
-    
+
     // Social Links
     linkedinUrl: '',
     githubUrl: '',
     portfolioUrl: '',
-    
+
     // Skills & Expertise
     skills: '',
     expertise: '',
     areaOfExpertise: '',
     achievements: '',
-    
+
     // Bio & Description
     shortBio: '',
     interests: '',
-    
+
     // Mentorship Details
     availableForMentorship: false,
-    typeOfSupport: [],
-    mentoringAreas: [],
+    typeOfSupport: [] as string[],
+    mentoringAreas: [] as string[],
     maxMentees: '5',
-    preferredMeetingTypes: [],
+    preferredMeetingTypes: [] as string[],
     responseTime: 'Within 24 hours',
-    
+
     // Fees Structure
     isFree: true,
     sessionFee: '0',
     monthlyFee: '0',
-    
+
     // Availability
     isAvailable: true,
     availableSlots: '3',
   });
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setFormData(prev => ({ ...prev, [name]: checked }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleSelectChange = (value, name) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    // Checkbox handling needs explicit cast or different handler if strict
+    // For standard inputs:
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSwitchChange = (checked, name) => {
+  const handleSelectChange = (value: string, name: string) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSwitchChange = (checked: boolean, name: string) => {
     setFormData(prev => ({ ...prev, [name]: checked }));
   };
 
-  const handleMultiSelectChange = (value, name) => {
+  const handleMultiSelectChange = (value: string, name: string) => {
     setFormData(prev => {
-      let currentArray = [...prev[name]];
+      // @ts-ignore - dynamic key access
+      let currentArray = [...(prev[name] as string[])];
       if (currentArray.includes(value)) {
         currentArray = currentArray.filter(item => item !== value);
       } else {
@@ -114,122 +117,187 @@ const AlumniProfileForm = () => {
     });
   };
 
-  const handleResumeChange = (e) => {
+  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setResumeFile(e.target.files[0]);
     }
   };
 
-  const handleProfilePictureChange = (e) => {
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setProfilePictureFile(e.target.files[0]);
     }
   };
 
-  const uploadFileToStorage = async (file, path) => {
+  // Resume Auto-fill Handler
+  const handleResumeAutoFill = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload a PDF resume for auto-fill.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsParsing(true);
+    const formDataUpload = new FormData();
+    formDataUpload.append('resume', file);
+
+    try {
+      const response = await fetch('http://localhost:5000/api/resume/extract', {
+        method: 'POST',
+        body: formDataUpload
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        const { email, phone, linkedinUrl, githubUrl, skills } = result.data;
+
+        setFormData(prev => ({
+          ...prev,
+          email: email || prev.email,
+          linkedinUrl: linkedinUrl || prev.linkedinUrl,
+          githubUrl: githubUrl || prev.githubUrl,
+          skills: skills.length > 0 ? skills.join(', ') : prev.skills,
+        }));
+
+        toast({
+          title: "Auto-fill Successful! ✨",
+          description: "We've extracted details from your resume. Please review the form.",
+        });
+
+        // Also set this file as the resume file for final submission
+        setResumeFile(file);
+
+      } else {
+        throw new Error(result.message || "Failed to extract data");
+      }
+    } catch (error) {
+      console.error("Auto-fill error:", error);
+      toast({
+        title: "Auto-fill Failed",
+        description: "Could not extract details. Please fill manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const uploadFileToStorage = async (file: File, path: string) => {
     if (!file) return null;
-    
+
     const fileRef = ref(storage, `${path}/${Date.now()}-${file.name}`);
     await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(fileRef);
     return downloadURL;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
-      // Upload profile picture if exists
-      const photoURL = profilePictureFile 
+      // Skip cloud storage uploads as the project is on the Spark (Free) plan
+      const photoURL = null;
+      const resumeURL = null;
+      
+      /* 
+      // Storage uploads disabled to avoid "Upgrade project" requirement
+      const photoURL = profilePictureFile
         ? await uploadFileToStorage(profilePictureFile, 'profile-pictures')
         : null;
-      
-      // Upload resume if exists
-      const resumeURL = resumeFile 
+
+      const resumeURL = resumeFile
         ? await uploadFileToStorage(resumeFile, 'resumes')
         : null;
-      
+      */
+
       // Process arrays from comma-separated strings
       const skillsArray = formData.skills ? formData.skills.split(',').map(s => s.trim()) : [];
       const expertiseArray = formData.expertise ? formData.expertise.split(',').map(s => s.trim()) : [];
       const achievementsArray = formData.achievements ? formData.achievements.split(',').map(s => s.trim()) : [];
-      
+
       // Prepare data for Firestore
       const alumniData = {
-  // Basic Info - Fixed field names
-  fullName: formData.fullName,          // Add this
-  name: formData.fullName,              // Keep this for backward compatibility
-  displayName: formData.fullName,       // Add this common field
-  email: formData.email || auth.currentUser?.email || '',
-  photoURL,
-  graduationYear: formData.graduationYear,
-  branch: formData.branch,
-  
-  // Professional
-  position: formData.currentJobTitle,
-  jobTitle: formData.currentJobTitle,   // Add this alternative field
-  company: formData.companyName,
-  companyName: formData.companyName,    // Add this alternative field
-  industry: formData.industry,
-  location: formData.location,
-  experience: parseInt(formData.yearsOfExperience) || 0,
-  
-  // Links
-  linkedinUrl: formData.linkedinUrl,
-  githubUrl: formData.githubUrl,
-  portfolioUrl: formData.portfolioUrl,
-  
-  // Skills & Expertise
-  skills: skillsArray,
-  expertise: expertiseArray,
-  achievements: achievementsArray,
-  
-  // Bio
-  bio: formData.shortBio,
-  
-  // Mentorship
-  isAvailable: formData.isAvailable,
-  availableForMentorship: formData.availableForMentorship,
-  mentoringAreas: formData.mentoringAreas,
-  preferredMeetingTypes: formData.preferredMeetingTypes,
-  maxMentees: parseInt(formData.maxMentees) || 5,
-  availableSlots: parseInt(formData.availableSlots) || 3,
-  responseTime: formData.responseTime,
-  
-  // Fees
-  fees: {
-    isFree: formData.isFree,
-    sessionFee: parseFloat(formData.sessionFee) || 0,
-    monthlyFee: parseFloat(formData.monthlyFee) || 0
-  },
-  
-  // Stats (initial values)
-  rating: 0,
-  totalMentees: 0,
-  activeMentees: 0,
-  sessionsCompleted: 0,
-  testimonials: [],
-  
-  // System fields
-  userId: auth.currentUser?.uid || 'anonymous',
-  resumeURL,
-  joinedDate: serverTimestamp(),
-  lastActive: serverTimestamp(),
-  createdAt: serverTimestamp(),
-  updatedAt: serverTimestamp()
-};
-      
+        // Basic Info
+        fullName: formData.fullName,
+        name: formData.fullName,
+        displayName: formData.fullName,
+        email: formData.email || auth.currentUser?.email || '',
+        photoURL,
+        graduationYear: formData.graduationYear,
+        branch: formData.branch,
+
+        // Professional
+        position: formData.currentJobTitle,
+        jobTitle: formData.currentJobTitle,
+        company: formData.companyName,
+        companyName: formData.companyName,
+        industry: formData.industry,
+        location: formData.location,
+        experience: parseInt(formData.yearsOfExperience) || 0,
+
+        // Links
+        linkedinUrl: formData.linkedinUrl,
+        githubUrl: formData.githubUrl,
+        portfolioUrl: formData.portfolioUrl,
+
+        // Skills & Expertise
+        skills: skillsArray,
+        expertise: expertiseArray,
+        achievements: achievementsArray,
+
+        // Bio
+        bio: formData.shortBio,
+
+        // Mentorship
+        isAvailable: formData.isAvailable,
+        availableForMentorship: formData.availableForMentorship,
+        mentoringAreas: formData.mentoringAreas,
+        preferredMeetingTypes: formData.preferredMeetingTypes,
+        maxMentees: parseInt(formData.maxMentees) || 5,
+        availableSlots: parseInt(formData.availableSlots) || 3,
+        responseTime: formData.responseTime,
+
+        // Fees
+        fees: {
+          isFree: formData.isFree,
+          sessionFee: parseFloat(formData.sessionFee) || 0,
+          monthlyFee: parseFloat(formData.monthlyFee) || 0
+        },
+
+        // Stats (initial values)
+        rating: 0,
+        totalMentees: 0,
+        activeMentees: 0,
+        sessionsCompleted: 0,
+        testimonials: [],
+
+        // System fields
+        userId: auth.currentUser?.uid || 'anonymous',
+        resumeURL,
+        joinedDate: serverTimestamp(),
+        lastActive: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
       // Add document to Firestore collection
       const docRef = await addDoc(collection(db, 'alumni_profiles'), alumniData);
-      
+
       toast({
         title: "Profile Created Successfully!",
         description: "Your alumni profile has been saved to our database.",
       });
-      
+
       navigate('/alumni/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating profile:", error);
       toast({
         title: "Something went wrong",
@@ -269,8 +337,55 @@ const AlumniProfileForm = () => {
               </div>
             </div>
           </div>
-          
+
           <form onSubmit={handleSubmit} className="p-8">
+
+            {/* Auto-fill Section */}
+            <div className="mb-8 bg-indigo-50 border border-indigo-100 rounded-xl p-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 -mt-2 -mr-2 bg-indigo-100 h-16 w-16 rounded-full opacity-50 blur-xl"></div>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold text-indigo-900 flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-indigo-600" />
+                    Smart Auto-fill
+                  </h3>
+                  <p className="text-sm text-indigo-700 max-w-xl">
+                    Upload your resume to automatically fill skills, email, and social links.
+                  </p>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type="file"
+                    id="resumeAutoFill"
+                    className="hidden"
+                    accept=".pdf"
+                    onChange={handleResumeAutoFill}
+                    disabled={isParsing}
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => document.getElementById('resumeAutoFill')?.click()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all hover:shadow-lg"
+                    disabled={isParsing}
+                  >
+                    {isParsing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Extracting Info...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload & Auto-fill
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             <div className="grid md:grid-cols-2 gap-8">
               {/* Personal Information Section */}
               <div className="md:col-span-2">
@@ -281,7 +396,7 @@ const AlumniProfileForm = () => {
                 <div className="grid md:grid-cols-2 gap-5">
                   <div>
                     <Label htmlFor="fullName" className="text-gray-800 font-medium">Full Name</Label>
-                    <Input 
+                    <Input
                       id="fullName"
                       name="fullName"
                       value={formData.fullName}
@@ -293,7 +408,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="email" className="text-gray-800 font-medium">Email Address</Label>
-                    <Input 
+                    <Input
                       id="email"
                       name="email"
                       type="email"
@@ -306,7 +421,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="graduationYear" className="text-gray-800 font-medium">Graduation Year</Label>
-                    <Input 
+                    <Input
                       id="graduationYear"
                       name="graduationYear"
                       value={formData.graduationYear}
@@ -318,7 +433,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="branch" className="text-gray-800 font-medium">Branch</Label>
-                    <Select 
+                    <Select
                       onValueChange={(value) => handleSelectChange(value, 'branch')}
                       value={formData.branch}
                     >
@@ -337,7 +452,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Professional Details Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -347,7 +462,7 @@ const AlumniProfileForm = () => {
                 <div className="grid md:grid-cols-2 gap-5">
                   <div>
                     <Label htmlFor="currentJobTitle" className="text-gray-800 font-medium">Current Job Title</Label>
-                    <Input 
+                    <Input
                       id="currentJobTitle"
                       name="currentJobTitle"
                       value={formData.currentJobTitle}
@@ -358,7 +473,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="companyName" className="text-gray-800 font-medium">Company Name</Label>
-                    <Input 
+                    <Input
                       id="companyName"
                       name="companyName"
                       value={formData.companyName}
@@ -369,7 +484,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="industry" className="text-gray-800 font-medium">Industry</Label>
-                    <Select 
+                    <Select
                       onValueChange={(value) => handleSelectChange(value, 'industry')}
                       value={formData.industry}
                     >
@@ -385,7 +500,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="yearsOfExperience" className="text-gray-800 font-medium">Years of Experience</Label>
-                    <Input 
+                    <Input
                       id="yearsOfExperience"
                       name="yearsOfExperience"
                       type="number"
@@ -397,7 +512,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="location" className="text-gray-800 font-medium">Location</Label>
-                    <Input 
+                    <Input
                       id="location"
                       name="location"
                       value={formData.location}
@@ -408,7 +523,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Skills & Expertise Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -418,7 +533,7 @@ const AlumniProfileForm = () => {
                 <div className="space-y-5">
                   <div>
                     <Label htmlFor="skills" className="text-gray-800 font-medium">Technical Skills</Label>
-                    <Textarea 
+                    <Textarea
                       id="skills"
                       name="skills"
                       value={formData.skills}
@@ -430,7 +545,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="expertise" className="text-gray-800 font-medium">Areas of Expertise</Label>
-                    <Textarea 
+                    <Textarea
                       id="expertise"
                       name="expertise"
                       value={formData.expertise}
@@ -442,7 +557,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="achievements" className="text-gray-800 font-medium">Achievements & Certifications</Label>
-                    <Textarea 
+                    <Textarea
                       id="achievements"
                       name="achievements"
                       value={formData.achievements}
@@ -454,7 +569,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Professional Links Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -464,7 +579,7 @@ const AlumniProfileForm = () => {
                 <div className="grid md:grid-cols-2 gap-5">
                   <div>
                     <Label htmlFor="linkedinUrl" className="text-gray-800 font-medium">LinkedIn URL</Label>
-                    <Input 
+                    <Input
                       id="linkedinUrl"
                       name="linkedinUrl"
                       value={formData.linkedinUrl}
@@ -475,7 +590,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="githubUrl" className="text-gray-800 font-medium">GitHub URL</Label>
-                    <Input 
+                    <Input
                       id="githubUrl"
                       name="githubUrl"
                       value={formData.githubUrl}
@@ -486,7 +601,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div className="md:col-span-2">
                     <Label htmlFor="portfolioUrl" className="text-gray-800 font-medium">Portfolio/Website URL</Label>
-                    <Input 
+                    <Input
                       id="portfolioUrl"
                       name="portfolioUrl"
                       value={formData.portfolioUrl}
@@ -497,7 +612,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Mentorship Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -510,13 +625,13 @@ const AlumniProfileForm = () => {
                       <Label htmlFor="availableForMentorship" className="text-gray-800 font-medium">Available for Mentorship?</Label>
                       <p className="text-sm text-gray-500 mt-1">Toggle to indicate mentorship availability</p>
                     </div>
-                    <Switch 
-                      id="availableForMentorship" 
-                      checked={formData.availableForMentorship} 
-                      onCheckedChange={(checked) => handleSwitchChange(checked, 'availableForMentorship')} 
+                    <Switch
+                      id="availableForMentorship"
+                      checked={formData.availableForMentorship}
+                      onCheckedChange={(checked) => handleSwitchChange(checked, 'availableForMentorship')}
                     />
                   </div>
-                  
+
                   {formData.availableForMentorship && (
                     <>
                       <div className="space-y-4">
@@ -524,9 +639,9 @@ const AlumniProfileForm = () => {
                         <div className="grid md:grid-cols-2 gap-3">
                           {mentoringAreaOptions.map((area) => (
                             <div key={area} className="flex items-center space-x-3 bg-gray-50 p-3 rounded-lg">
-                              <Input 
-                                type="checkbox" 
-                                id={area.replace(/\s+/g, '').toLowerCase()} 
+                              <Input
+                                type="checkbox"
+                                id={area.replace(/\s+/g, '').toLowerCase()}
                                 checked={formData.mentoringAreas.includes(area)}
                                 onChange={() => handleMultiSelectChange(area, 'mentoringAreas')}
                                 className="h-5 w-5"
@@ -536,15 +651,15 @@ const AlumniProfileForm = () => {
                           ))}
                         </div>
                       </div>
-                      
+
                       <div className="space-y-4">
                         <Label className="text-gray-800 font-medium">Preferred Meeting Types</Label>
                         <div className="grid md:grid-cols-2 gap-3">
                           {meetingTypeOptions.map((type) => (
                             <div key={type} className="flex items-center space-x-3 bg-gray-50 p-3 rounded-lg">
-                              <Input 
-                                type="checkbox" 
-                                id={type.replace(/\s+/g, '').toLowerCase()} 
+                              <Input
+                                type="checkbox"
+                                id={type.replace(/\s+/g, '').toLowerCase()}
                                 checked={formData.preferredMeetingTypes.includes(type)}
                                 onChange={() => handleMultiSelectChange(type, 'preferredMeetingTypes')}
                                 className="h-5 w-5"
@@ -554,11 +669,11 @@ const AlumniProfileForm = () => {
                           ))}
                         </div>
                       </div>
-                      
+
                       <div className="grid md:grid-cols-3 gap-5">
                         <div>
                           <Label htmlFor="maxMentees" className="text-gray-800 font-medium">Max Mentees</Label>
-                          <Select 
+                          <Select
                             onValueChange={(value) => handleSelectChange(value, 'maxMentees')}
                             value={formData.maxMentees}
                           >
@@ -566,7 +681,7 @@ const AlumniProfileForm = () => {
                               <SelectValue placeholder="Select max mentees" />
                             </SelectTrigger>
                             <SelectContent>
-                              {[1,2,3,4,5,6,7,8,9,10].map(num => (
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
                                 <SelectItem key={num} value={num.toString()}>{num}</SelectItem>
                               ))}
                             </SelectContent>
@@ -574,7 +689,7 @@ const AlumniProfileForm = () => {
                         </div>
                         <div>
                           <Label htmlFor="availableSlots" className="text-gray-800 font-medium">Available Slots</Label>
-                          <Select 
+                          <Select
                             onValueChange={(value) => handleSelectChange(value, 'availableSlots')}
                             value={formData.availableSlots}
                           >
@@ -582,7 +697,7 @@ const AlumniProfileForm = () => {
                               <SelectValue placeholder="Available slots" />
                             </SelectTrigger>
                             <SelectContent>
-                              {[1,2,3,4,5,6,7,8,9,10].map(num => (
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
                                 <SelectItem key={num} value={num.toString()}>{num}</SelectItem>
                               ))}
                             </SelectContent>
@@ -590,7 +705,7 @@ const AlumniProfileForm = () => {
                         </div>
                         <div>
                           <Label htmlFor="responseTime" className="text-gray-800 font-medium">Response Time</Label>
-                          <Select 
+                          <Select
                             onValueChange={(value) => handleSelectChange(value, 'responseTime')}
                             value={formData.responseTime}
                           >
@@ -610,7 +725,7 @@ const AlumniProfileForm = () => {
                   )}
                 </div>
               </div>
-              
+
               {/* Fees Section */}
               {formData.availableForMentorship && (
                 <div className="md:col-span-2">
@@ -624,18 +739,18 @@ const AlumniProfileForm = () => {
                         <Label htmlFor="isFree" className="text-gray-800 font-medium">Free Mentorship</Label>
                         <p className="text-sm text-gray-500 mt-1">Offer mentorship for free</p>
                       </div>
-                      <Switch 
-                        id="isFree" 
-                        checked={formData.isFree} 
-                        onCheckedChange={(checked) => handleSwitchChange(checked, 'isFree')} 
+                      <Switch
+                        id="isFree"
+                        checked={formData.isFree}
+                        onCheckedChange={(checked) => handleSwitchChange(checked, 'isFree')}
                       />
                     </div>
-                    
+
                     {!formData.isFree && (
                       <div className="grid md:grid-cols-2 gap-5">
                         <div>
                           <Label htmlFor="sessionFee" className="text-gray-800 font-medium">Session Fee (₹)</Label>
-                          <Input 
+                          <Input
                             id="sessionFee"
                             name="sessionFee"
                             type="number"
@@ -647,7 +762,7 @@ const AlumniProfileForm = () => {
                         </div>
                         <div>
                           <Label htmlFor="monthlyFee" className="text-gray-800 font-medium">Monthly Fee (₹)</Label>
-                          <Input 
+                          <Input
                             id="monthlyFee"
                             name="monthlyFee"
                             type="number"
@@ -662,7 +777,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               )}
-              
+
               {/* Documents Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -673,11 +788,11 @@ const AlumniProfileForm = () => {
                   <div className="bg-blue-50 p-6 rounded-xl border border-blue-200">
                     <Label className="text-gray-800 font-medium block mb-4">Profile Photo</Label>
                     <div className="flex items-center gap-4">
-                      <Button 
-                        type="button" 
-                        variant="outline" 
+                      <Button
+                        type="button"
+                        variant="outline"
                         className="bg-white border-blue-300 hover:bg-blue-100"
-                        onClick={() => document.getElementById('profilePicture').click()}
+                        onClick={() => document.getElementById('profilePicture')?.click()}
                       >
                         <Upload className="mr-2 h-5 w-5" />
                         {profilePictureFile ? 'Change File' : 'Upload Photo'}
@@ -697,15 +812,15 @@ const AlumniProfileForm = () => {
                     </div>
                     <p className="text-sm text-gray-500 mt-3">JPEG or PNG, max 5MB</p>
                   </div>
-                  
+
                   <div className="bg-purple-50 p-6 rounded-xl border border-purple-200">
                     <Label className="text-gray-800 font-medium block mb-4">Resume/CV</Label>
                     <div className="flex items-center gap-4">
-                      <Button 
-                        type="button" 
-                        variant="outline" 
+                      <Button
+                        type="button"
+                        variant="outline"
                         className="bg-white border-purple-300 hover:bg-purple-100"
-                        onClick={() => document.getElementById('resume').click()}
+                        onClick={() => document.getElementById('resume')?.click()}
                       >
                         <Upload className="mr-2 h-5 w-5" />
                         {resumeFile ? 'Change File' : 'Upload Resume'}
@@ -727,7 +842,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Bio Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -737,7 +852,7 @@ const AlumniProfileForm = () => {
                 <div className="space-y-5">
                   <div>
                     <Label htmlFor="shortBio" className="text-gray-800 font-medium">Short Bio</Label>
-                    <Textarea 
+                    <Textarea
                       id="shortBio"
                       name="shortBio"
                       value={formData.shortBio}
@@ -749,7 +864,7 @@ const AlumniProfileForm = () => {
                   </div>
                   <div>
                     <Label htmlFor="interests" className="text-gray-800 font-medium">Interests & Hobbies</Label>
-                    <Textarea 
+                    <Textarea
                       id="interests"
                       name="interests"
                       value={formData.interests}
@@ -761,7 +876,7 @@ const AlumniProfileForm = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Availability Section */}
               <div className="md:col-span-2">
                 <h2 className="text-xl font-semibold mb-6 flex items-center text-blue-800 border-b pb-3">
@@ -773,28 +888,28 @@ const AlumniProfileForm = () => {
                     <Label htmlFor="isAvailable" className="text-gray-800 font-medium">Currently Available</Label>
                     <p className="text-sm text-gray-500 mt-1">Toggle your overall availability status</p>
                   </div>
-                  <Switch 
-                    id="isAvailable" 
-                    checked={formData.isAvailable} 
-                    onCheckedChange={(checked) => handleSwitchChange(checked, 'isAvailable')} 
+                  <Switch
+                    id="isAvailable"
+                    checked={formData.isAvailable}
+                    onCheckedChange={(checked) => handleSwitchChange(checked, 'isAvailable')}
                   />
                 </div>
               </div>
             </div>
-            
+
             {/* Submit Button */}
             <div className="mt-10 pt-8 border-t">
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => navigate('/alumni')}
                   className="px-8 py-3 text-gray-600 border-gray-300 hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={isLoading}
                   className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg shadow-lg transform transition duration-200 hover:scale-105"
                 >
@@ -820,4 +935,3 @@ const AlumniProfileForm = () => {
 };
 
 export default AlumniProfileForm;
-

@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "minor-project-64ad1"
-  }
+    "default": "bvrit-connect-14bf0",
+    "bvrit-connect": "bvrit-connect-14bf0"
+  },
+  "targets": {},
+  "etags": {}
 }

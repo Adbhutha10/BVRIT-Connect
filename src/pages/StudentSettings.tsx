@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { 
   doc, 
   getDoc, 
+  setDoc,
   updateDoc, 
   deleteDoc,
   collection,
@@ -42,6 +43,7 @@ const StudentSettings = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [profileDocId, setProfileDocId] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   
   // Form fields
@@ -102,6 +104,7 @@ const StudentSettings = () => {
         
         const profileData = userDocSnap.data();
         setProfile(profileData);
+        setProfileDocId(userDocSnap.id);
         
         // Populate form data
         setFormData({
@@ -189,10 +192,10 @@ const StudentSettings = () => {
     setMessage({ type: '', text: '' });
     
     try {
-      const userDocRef = doc(db, 'students', user.uid);
+      const userDocRef = doc(db, 'students', profileDocId || user.uid);
       
-      // Update the settings in the user profile
-      await updateDoc(userDocRef, {
+      // Update the settings in the user profile using setDoc with merge: true
+      await setDoc(userDocRef, {
         fullName: formData.fullName,
         rollNumber: formData.rollNumber,
         branch: formData.branch,
@@ -211,7 +214,7 @@ const StudentSettings = () => {
           allowCommunityNotifications: formData.allowCommunityNotifications,
           lastUpdated: new Date()
         }
-      });
+      }, { merge: true });
       
       setMessage({ type: 'success', text: 'Profile settings updated successfully!' });
     } catch (error) {
