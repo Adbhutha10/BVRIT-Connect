@@ -15,7 +15,9 @@ import {
   Cloud,
   Cpu,
   Shield,
-  Radio
+  Radio,
+  Bell,
+  Calendar
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,7 +38,8 @@ import {
   addDoc,
   serverTimestamp, 
   orderBy, 
-  limit 
+  limit,
+  writeBatch
 } from 'firebase/firestore';
 
 const StudentCommunity = () => {
@@ -51,230 +54,140 @@ const StudentCommunity = () => {
   const [studentProfile, setStudentProfile] = useState(null);
   const [members, setMembers] = useState([]);
   const [communityLeader, setCommunityLeader] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [events, setEvents] = useState([]);
 
-  // Mock community data
-  const communitiesData = [
-    {
-      id: "fsd-genai",
-      name: "Full Stack Development & GenAI",
-      description: "Explore modern web development technologies and generative AI applications. Share projects, discuss frameworks like React, Node.js, and learn about LLMs.",
-      category: "tech",
-      memberCount: 124,
-      newPosts: 8,
-      icon: <Code className="h-6 w-6 text-blue-600" />,
-      color: "blue",
-      leader: {
-        name: "Rahul Sharma",
-        title: "Senior Software Engineer at Microsoft",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    },
-    {
-      id: "computer-vision",
-      name: "Computer Vision",
-      description: "Discuss computer vision algorithms, image processing techniques, and applications. Share research papers and collaborate on projects involving OpenCV and deep learning models.",
-      category: "tech",
-      memberCount: 78,
-      newPosts: 5,
-      icon: <Eye className="h-6 w-6 text-purple-600" />,
-      color: "purple",
-      leader: {
-        name: "Priya Desai",
-        title: "AI Researcher at NVIDIA",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    },
-    {
-      id: "cloud-computing",
-      name: "Cloud Computing",
-      description: "Learn about cloud platforms like AWS, Azure, and GCP. Discuss cloud architecture, serverless computing, and best practices for cloud deployments.",
-      category: "tech",
-      memberCount: 92,
-      newPosts: 12,
-      icon: <Cloud className="h-6 w-6 text-sky-600" />,
-      color: "sky",
-      leader: {
-        name: "Arun Kumar",
-        title: "Cloud Solutions Architect at AWS",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    },
-    {
-      id: "quantum-computing",
-      name: "Quantum Computing",
-      description: "Explore the fundamentals of quantum computing, quantum algorithms, and the latest advancements in quantum hardware. Discuss applications and future implications.",
-      category: "research",
-      memberCount: 45,
-      newPosts: 3,
-      icon: <Cpu className="h-6 w-6 text-green-600" />,
-      color: "green",
-      leader: {
-        name: "Dr. Vijay Reddy",
-        title: "Quantum Researcher at IBM",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    },
-    {
-      id: "cyber-security",
-      name: "Cyber Security",
-      description: "Discuss network security, ethical hacking, cryptography, and the latest security threats. Share resources and best practices for securing systems and data.",
-      category: "tech",
-      memberCount: 86,
-      newPosts: 9,
-      icon: <Shield className="h-6 w-6 text-red-600" />,
-      color: "red",
-      leader: {
-        name: "Sneha Patel",
-        title: "Security Consultant at Deloitte",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    },
-    {
-      id: "iot",
-      name: "Internet of Things",
-      description: "Discuss IoT devices, protocols, and applications. Share projects involving Arduino, Raspberry Pi, and other embedded systems. Explore IoT architecture and solutions.",
-      category: "tech",
-      memberCount: 64,
-      newPosts: 7,
-      icon: <Radio className="h-6 w-6 text-orange-600" />,
-      color: "orange",
-      leader: {
-        name: "Karthik Nair",
-        title: "IoT Specialist at Bosch",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    }
-  ];
-
-  // Mock post data
-  const postsData = {
-    "fsd-genai": [
-      {
-        id: "post1",
-        author: {
-          name: "Rahul Sharma",
-          role: "Alumni - Microsoft",
-          imageUrl: "/api/placeholder/32/32"
-        },
-        content: "Just published a new tutorial on building a full-stack app with React and Firebase. Check it out here: [link]. Let me know if you have any questions!",
-        timestamp: "2 hours ago",
-        likes: 12,
-        comments: 5
-      },
-      {
-        id: "post2",
-        author: {
-          name: "Anusha Reddy",
-          role: "Student - 3rd Year CSE",
-          imageUrl: "/api/placeholder/32/32"
-        },
-        content: "Has anyone worked with NextJS 14? I'm trying to understand server components and would appreciate any resources or tips.",
-        timestamp: "5 hours ago",
-        likes: 7,
-        comments: 8
-      },
-      {
-        id: "post3",
-        author: {
-          name: "Vikram Singh",
-          role: "Alumni - Google",
-          imageUrl: "/api/placeholder/32/32"
-        },
-        content: "Excited to announce that we're hosting a workshop on LangChain and building RAG applications next weekend. Looking for student volunteers who want to help and learn along the way!",
-        timestamp: "1 day ago",
-        likes: 24,
-        comments: 15
-      }
-    ],
-    "computer-vision": [
-      {
-        id: "post1",
-        author: {
-          name: "Priya Desai",
-          role: "Alumni - NVIDIA",
-          imageUrl: "/api/placeholder/32/32"
-        },
-        content: "Just released our research paper on efficient object detection algorithms for embedded devices. Would love to get feedback from CV enthusiasts!",
-        timestamp: "3 hours ago",
-        likes: 15,
-        comments: 7
-      }
-    ],
-    "cloud-computing": [
-      {
-        id: "post1",
-        author: {
-          name: "Arun Kumar",
-          role: "Alumni - AWS",
-          imageUrl: "/api/placeholder/32/32"
-        },
-        content: "AWS just announced new serverless features that could revolutionize how we build cloud applications. Let's discuss the implications.",
-        timestamp: "1 hour ago",
-        likes: 18,
-        comments: 9
-      }
-    ]
-  };
-
-  // Mock members data
-  const membersData = {
-    "fsd-genai": [
-      {
-        id: "member1",
-        name: "Vikram Singh",
-        role: "Alumni - Google",
-        year: "2015 Batch",
-        imageUrl: "/api/placeholder/32/32"
-      },
-      {
-        id: "member2",
-        name: "Anusha Reddy",
-        role: "Student - CSE",
-        year: "3rd Year",
-        imageUrl: "/api/placeholder/32/32"
-      },
-      {
-        id: "member3",
-        name: "Karan Mehta",
-        role: "Alumni - Amazon",
-        year: "2018 Batch",
-        imageUrl: "/api/placeholder/32/32"
-      },
-      {
-        id: "member4",
-        name: "Shreya Gupta",
-        role: "Student - IT",
-        year: "4th Year",
-        imageUrl: "/api/placeholder/32/32"
-      },
-      {
-        id: "member5",
-        name: "Rohan Kapoor",
-        role: "Alumni - Flipkart",
-        year: "2020 Batch",
-        imageUrl: "/api/placeholder/32/32"
-      }
-    ]
-  };
-
+  // Real-time listener for current user's student profile
   useEffect(() => {
-    // Mock data loading
-    setLoading(false);
-    setCommunities(communitiesData);
-    setJoinedCommunities([
-      "fsd-genai",
-      "computer-vision"
-    ]);
-    
-    // Set student profile
-    setStudentProfile({
-      id: "student123",
-      fullName: "Arjun Sharma",
-      year: "3rd",
-      branch: "CSE",
-      imageUrl: "/api/placeholder/32/32"
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (!user) return;
+      
+      const profileQuery = query(
+        collection(db, 'students'),
+        where('userId', '==', user.uid)
+      );
+      
+      const unsubscribeProfile = onSnapshot(profileQuery, (snapshot) => {
+        if (!snapshot.empty) {
+          setStudentProfile({
+            id: snapshot.docs[0].id,
+            ...snapshot.docs[0].data()
+          });
+        }
+      }, (error) => {
+        console.error("Error in student profile listener:", error);
+      });
+      
+      return () => unsubscribeProfile();
     });
+    
+    return () => unsubscribeAuth();
   }, []);
+
+  // Real-time listener for all communities
+  useEffect(() => {
+    const communitiesQuery = query(collection(db, 'communities'), orderBy('name'));
+    
+    const unsubscribeCommunities = onSnapshot(communitiesQuery, (snapshot) => {
+      const communitiesList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCommunities(communitiesList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error in communities listener:", error);
+    });
+    
+    return () => unsubscribeCommunities();
+  }, []);
+
+  // Real-time listener for joined communities
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    
+    const joinedQuery = query(
+      collection(db, 'communityMembers'),
+      where('userId', '==', auth.currentUser.uid)
+    );
+    
+    const unsubscribeJoined = onSnapshot(joinedQuery, (snapshot) => {
+      const joinedIds = snapshot.docs.map(doc => doc.data().communityId);
+      setJoinedCommunities(joinedIds);
+    }, (error) => {
+      console.error("Error in joined status listener:", error);
+    });
+    
+    return () => unsubscribeJoined();
+  }, []);
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'Just now';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Listeners for selected community details
+  useEffect(() => {
+    if (!selectedCommunity) return;
+
+    // Listen to posts
+    const postsQuery = query(
+      collection(db, 'communityPosts'),
+      where('communityId', '==', selectedCommunity.id)
+    );
+    const unsubscribePosts = onSnapshot(postsQuery, (snapshot) => {
+      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error in posts listener:", error);
+    });
+
+    // Listen to members
+    const membersQuery = query(
+      collection(db, 'communityMembers'),
+      where('communityId', '==', selectedCommunity.id)
+    );
+    const unsubscribeMembers = onSnapshot(membersQuery, (snapshot) => {
+      setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error in members listener:", error);
+    });
+
+    // Listen to announcements
+    const announcementsQuery = query(
+      collection(db, 'communityAnnouncements'),
+      where('communityId', '==', selectedCommunity.id)
+    );
+    const unsubscribeAnnouncements = onSnapshot(announcementsQuery, (snapshot) => {
+      setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error in announcements listener:", error);
+    });
+
+    // Listen to events
+    const eventsQuery = query(
+      collection(db, 'communityEvents'),
+      where('communityId', '==', selectedCommunity.id)
+    );
+    const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
+      setEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error in events listener:", error);
+    });
+
+    return () => {
+      unsubscribePosts();
+      unsubscribeMembers();
+      unsubscribeAnnouncements();
+      unsubscribeEvents();
+    };
+  }, [selectedCommunity]);
 
   const filterCommunities = () => {
     if (!searchQuery) return communities;
@@ -287,45 +200,83 @@ const StudentCommunity = () => {
 
   const handleCommunitySelect = (community) => {
     setSelectedCommunity(community);
-    // Load posts for this community
-    setPosts(postsData[community.id] || []);
-    // Load members for this community
-    setMembers(membersData[community.id] || []);
-    // Set community leader
     setCommunityLeader(community.leader);
   };
 
-  const handleJoinCommunity = (communityId) => {
-    if (joinedCommunities.includes(communityId)) {
-      // Leave community logic
-      setJoinedCommunities(joinedCommunities.filter(id => id !== communityId));
-    } else {
-      // Join community logic
-      setJoinedCommunities([...joinedCommunities, communityId]);
+  const handleJoinCommunity = async (communityId) => {
+    if (!auth.currentUser) return;
+    
+    try {
+      if (joinedCommunities.includes(communityId)) {
+        const q = query(
+          collection(db, 'communityMembers'),
+          where('communityId', '==', communityId),
+          where('userId', '==', auth.currentUser.uid)
+        );
+        const snapshot = await getDocs(q);
+        const batch = writeBatch(db);
+        snapshot.forEach(docSnap => batch.delete(docSnap.ref));
+        
+        // Update member count
+        const communityRef = doc(db, 'communities', communityId);
+        const comm = communities.find(c => c.id === communityId);
+        if (comm) {
+          batch.update(communityRef, {
+            memberCount: Math.max(0, (comm.memberCount || 0) - 1)
+          });
+        }
+        
+        await batch.commit();
+      } else {
+        const batch = writeBatch(db);
+        const memberRef = doc(collection(db, 'communityMembers'));
+        batch.set(memberRef, {
+          communityId,
+          userId: auth.currentUser.uid,
+          name: studentProfile?.fullName || auth.currentUser.displayName || 'Anonymous',
+          role: studentProfile ? `Student - ${studentProfile.year} Year` : 'Student',
+          imageUrl: studentProfile?.imageUrl || auth.currentUser.photoURL || '',
+          joinedAt: serverTimestamp()
+        });
+        
+        // Update member count
+        const communityRef = doc(db, 'communities', communityId);
+        const comm = communities.find(c => c.id === communityId);
+        if (comm) {
+          batch.update(communityRef, {
+            memberCount: (comm.memberCount || 0) + 1
+          });
+        }
+        
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Error joining/leaving community:", error);
     }
   };
 
-  const handlePostSubmit = (e) => {
+  const handlePostSubmit = async (e) => {
     e.preventDefault();
+    if (!newPostContent.trim() || !selectedCommunity || !auth.currentUser) return;
     
-    if (!newPostContent.trim()) return;
-    
-    // Add new post to the top of the list
-    const newPost = {
-      id: `new-post-${Date.now()}`,
-      author: {
-        name: studentProfile.fullName,
-        role: `Student - ${studentProfile.year} Year ${studentProfile.branch}`,
-        imageUrl: studentProfile.imageUrl
-      },
-      content: newPostContent,
-      timestamp: "Just now",
-      likes: 0,
-      comments: 0
-    };
-    
-    setPosts([newPost, ...posts]);
-    setNewPostContent('');
+    try {
+      await addDoc(collection(db, 'communityPosts'), {
+        communityId: selectedCommunity.id,
+        authorId: auth.currentUser.uid,
+        author: {
+          name: studentProfile?.fullName || auth.currentUser.displayName || 'Anonymous',
+          role: studentProfile ? `Student - ${studentProfile.year} Year ${studentProfile.branch}` : 'Student',
+          imageUrl: studentProfile?.imageUrl || auth.currentUser.photoURL || ''
+        },
+        content: newPostContent,
+        createdAt: serverTimestamp(),
+        likes: 0,
+        comments: 0
+      });
+      setNewPostContent('');
+    } catch (error) {
+      console.error("Error posting to community:", error);
+    }
   };
 
   const handleLikePost = (postId) => {
@@ -400,8 +351,13 @@ const StudentCommunity = () => {
                 <div key={community.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
                   <div className={`bg-${community.color}-50 p-4`}>
                     <div className="flex justify-between items-center">
-                      <div className={`bg-${community.color}-100 p-3 rounded-full`}>
-                        {community.icon}
+                      <div className={`bg-${community.color || 'blue'}-100 p-3 rounded-full`}>
+                        {community.name === "Computer Vision" ? <Eye className="h-6 w-6 text-purple-600" /> :
+                         community.name === "Cloud Computing" ? <Cloud className="h-6 w-6 text-sky-600" /> :
+                         community.name === "Quantum Computing" ? <Cpu className="h-6 w-6 text-green-600" /> :
+                         community.name === "Cyber Security" ? <Shield className="h-6 w-6 text-red-600" /> :
+                         community.name === "Internet of Things" ? <Radio className="h-6 w-6 text-orange-600" /> :
+                         <Code className="h-6 w-6 text-blue-600" />}
                       </div>
                       <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2.5 py-1 rounded-full flex items-center">
                         <Users className="h-3 w-3 mr-1" /> {community.memberCount} members
@@ -461,8 +417,13 @@ const StudentCommunity = () => {
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 mb-6">
             <div className={`bg-${selectedCommunity.color}-50 p-6`}>
               <div className="flex items-center">
-                <div className={`bg-${selectedCommunity.color}-100 p-4 rounded-full mr-4`}>
-                  {selectedCommunity.icon}
+                <div className={`bg-${selectedCommunity.color || 'blue'}-100 p-4 rounded-full mr-4`}>
+                  {selectedCommunity.name === "Computer Vision" ? <Eye className="h-6 w-6 text-purple-600" /> :
+                   selectedCommunity.name === "Cloud Computing" ? <Cloud className="h-6 w-6 text-sky-600" /> :
+                   selectedCommunity.name === "Quantum Computing" ? <Cpu className="h-6 w-6 text-green-600" /> :
+                   selectedCommunity.name === "Cyber Security" ? <Shield className="h-6 w-6 text-red-600" /> :
+                   selectedCommunity.name === "Internet of Things" ? <Radio className="h-6 w-6 text-orange-600" /> :
+                   <Code className="h-6 w-6 text-blue-600" />}
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-800">{selectedCommunity.name}</h1>
@@ -471,7 +432,7 @@ const StudentCommunity = () => {
                     {selectedCommunity.memberCount} members
                     <span className="mx-2">•</span>
                     <Globe className="h-4 w-4 mr-1" /> 
-                    Led by {selectedCommunity.leader.name}
+                    Led by {selectedCommunity.leader?.name || "Alumni Leader"}
                   </div>
                 </div>
               </div>
@@ -493,8 +454,10 @@ const StudentCommunity = () => {
           
           {/* Community Tabs */}
           <Tabs defaultValue="discussions" className="mb-8">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="discussions">Discussions</TabsTrigger>
+              <TabsTrigger value="announcements">Announcements</TabsTrigger>
+              <TabsTrigger value="events">Events</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
               <TabsTrigger value="resources">Resources</TabsTrigger>
             </TabsList>
@@ -561,7 +524,7 @@ const StudentCommunity = () => {
                             </div>
                             <div className="text-xs text-gray-500 flex items-center">
                               <Clock className="h-3 w-3 mr-1" />
-                              {post.timestamp}
+                              {formatTimestamp(post.createdAt)}
                             </div>
                           </div>
                           
@@ -605,6 +568,64 @@ const StudentCommunity = () => {
               )}
             </TabsContent>
             
+            <TabsContent value="announcements" className="mt-6 space-y-4">
+              {announcements.length > 0 ? (
+                announcements.map(announcement => (
+                  <div key={announcement.id} className="bg-yellow-50 border border-yellow-100 rounded-xl p-6">
+                    <div className="flex items-start gap-3">
+                      <Bell className="h-6 w-6 text-yellow-600 mt-1" />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <h4 className="font-bold text-gray-900">{announcement.authorName || "Alumni Leader"}</h4>
+                          <span className="text-xs text-gray-500">{formatTimestamp(announcement.createdAt)}</span>
+                        </div>
+                        <p className="text-xs text-gray-500">{announcement.authorTitle || "Community Leader"}</p>
+                        <p className="text-sm text-gray-700 mt-2">{announcement.content}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+                  <p className="text-gray-500">No announcements yet</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="events" className="mt-6 space-y-4">
+              {events.length > 0 ? (
+                events.map(event => (
+                  <div key={event.id} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-gray-900 text-lg">{event.title}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                        <div className="flex flex-wrap gap-4 mt-4 text-sm text-gray-500">
+                          <div className="flex items-center">
+                            <Calendar className="h-4 w-4 mr-1 text-blue-600" />
+                            {event.date || formatTimestamp(event.eventDate)}
+                          </div>
+                          <div className="flex items-center">
+                            <Clock className="h-4 w-4 mr-1 text-blue-600" />
+                            {event.time || "Check description"}
+                          </div>
+                          <div className="flex items-center">
+                            <Globe className="h-4 w-4 mr-1 text-blue-600" />
+                            {event.venue || "Online"}
+                          </div>
+                        </div>
+                      </div>
+                      <Button size="sm">Register</Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+                  <p className="text-gray-500">No upcoming events yet</p>
+                </div>
+              )}
+            </TabsContent>
+
             <TabsContent value="members" className="mt-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                 <div className="p-6 border-b border-gray-100">

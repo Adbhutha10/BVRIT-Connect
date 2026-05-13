@@ -104,6 +104,12 @@ const AlumniOpportunities = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentOpportunityId, setCurrentOpportunityId] = useState(null);
   
+  // Applicant Viewer state
+  const [showApplicantsDialog, setShowApplicantsDialog] = useState(false);
+  const [selectedOpportunityForApplicants, setSelectedOpportunityForApplicants] = useState(null);
+  const [opportunityApplicants, setOpportunityApplicants] = useState([]);
+  const [isFetchingApplicants, setIsFetchingApplicants] = useState(false);
+  
   // Fetch opportunities from Firestore with real-time updates
   useEffect(() => {
     const fetchOpportunities = () => {
@@ -317,7 +323,7 @@ const AlumniOpportunities = () => {
         status: 'pending', // pending, accepted, rejected
         appliedAt: serverTimestamp(),
         // Get the opportunity owner's ID for permissions
-        opportunityOwnerId: opportunities.find(opp => opp.id === applicationData.opportunityId)?.createdBy
+        opportunityOwnerId: opportunities.find(opp => opp.id === applicationData.opportunityId)?.creatorId
       };
       
       await addDoc(collection(db, "applications"), applicationInfo);
@@ -351,9 +357,74 @@ const AlumniOpportunities = () => {
     }
   };
   
+  // View applications for a specific opportunity
+  const handleViewApplicants = async (opportunity) => {
+    setSelectedOpportunityForApplicants(opportunity);
+    setShowApplicantsDialog(true);
+    setIsFetchingApplicants(true);
+    
+    try {
+      const q = query(
+        collection(db, "applications"),
+        where("opportunityId", "==", opportunity.id)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const applicantsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...(doc.data() as any)
+      }));
+      
+      // Sort applicants by date descending in memory
+      applicantsData.sort((a: any, b: any) => {
+        const dateA = a.appliedAt?.toDate ? a.appliedAt.toDate() : new Date(a.appliedAt || 0);
+        const dateB = b.appliedAt?.toDate ? b.appliedAt.toDate() : new Date(b.appliedAt || 0);
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      setOpportunityApplicants(applicantsData);
+    } catch (error) {
+      console.error("Error fetching applicants: ", error);
+      toast({
+        title: "Error",
+        description: "Failed to load applicants.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsFetchingApplicants(false);
+    }
+  };
+  
+  // Update an application's status
+  const handleUpdateApplicationStatus = async (applicationId, newStatus) => {
+    try {
+      await updateDoc(doc(db, "applications", applicationId), {
+        status: newStatus
+      });
+      
+      // Update local state
+      setOpportunityApplicants(prev => 
+        prev.map(app => app.id === applicationId ? { ...app, status: newStatus } : app)
+      );
+      
+      toast({
+        title: "Status Updated",
+        description: `Application status changed to ${newStatus}.`,
+        variant: "default"
+      });
+    } catch (error) {
+      console.error("Error updating status: ", error);
+      toast({
+        title: "Error",
+        description: "Failed to update application status.",
+        variant: "destructive"
+      });
+    }
+  };
+  
   // Check if user can edit an opportunity
   const canEditOpportunity = (opportunity) => {
-    return currentUser && opportunity.createdBy === currentUser.uid;
+    return currentUser && opportunity.creatorId === currentUser.uid;
   };
   
   // Filter opportunities based on search term, filter type, and view mode
@@ -368,7 +439,7 @@ const AlumniOpportunities = () => {
     
     // Filter by ownership (for "My Opportunities" view)
     const matchesOwnership = viewMode === 'allOpportunities' || 
-      (viewMode === 'myOpportunities' && opportunity.createdBy === currentUser?.uid);
+      (viewMode === 'myOpportunities' && opportunity.creatorId === currentUser?.uid);
     
     return matchesSearch && matchesType && matchesOwnership;
   });
@@ -709,6 +780,15 @@ const AlumniOpportunities = () => {
                         <Button 
                           variant="ghost" 
                           size="sm"
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                          onClick={() => handleViewApplicants(opportunity)}
+                        >
+                          <Users className="h-4 w-4 mr-1" />
+                          Applicants
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
                           onClick={() => handleEdit(opportunity)}
                         >
                           <Edit className="h-4 w-4 mr-1" />
@@ -976,6 +1056,99 @@ const AlumniOpportunities = () => {
               onClick={handleDelete}
             >
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Applicants Viewer Modal */}
+      <Dialog open={showApplicantsDialog} onOpenChange={setShowApplicantsDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Applicants for {selectedOpportunityForApplicants?.title}</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            {isFetchingApplicants ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading applicants...</p>
+              </div>
+            ) : opportunityApplicants.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500 text-lg">No applicants yet</p>
+                <p className="text-gray-400 text-sm mt-1">Check back later when students apply.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {opportunityApplicants.map((applicant: any) => (
+                  <div key={applicant.id} className="border border-gray-200 rounded-lg p-5 bg-white shadow-sm">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-4 border-b border-gray-100 pb-4">
+                      <div>
+                        <h3 className="font-semibold text-lg text-gray-900">{applicant.studentName}</h3>
+                        <p className="text-blue-600 text-sm mb-1">
+                          <a href={`mailto:${applicant.studentEmail}`} className="hover:underline flex items-center">
+                            {applicant.studentEmail}
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                          </a>
+                        </p>
+                        <p className="text-gray-500 text-xs flex items-center">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          Applied: {formatDate(applicant.appliedAt)}
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <Label htmlFor={`status-${applicant.id}`} className="text-sm text-gray-600">Status:</Label>
+                        <Select 
+                          value={applicant.status || 'pending'} 
+                          onValueChange={(val) => handleUpdateApplicationStatus(applicant.id, val)}
+                        >
+                          <SelectTrigger id={`status-${applicant.id}`} className="w-[140px] h-8 text-xs">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="reviewing">Reviewing</SelectItem>
+                            <SelectItem value="interview">Interview</SelectItem>
+                            <SelectItem value="accepted">Accepted</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    
+                    <div className="mb-4">
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Message to Recruiter</h4>
+                      <div className="bg-gray-50 rounded p-4 text-sm text-gray-800 whitespace-pre-wrap border border-gray-100">
+                        {applicant.message}
+                      </div>
+                    </div>
+                    
+                    {applicant.resume && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Resume / Portfolio</h4>
+                        <a 
+                          href={applicant.resume} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-2 rounded-md hover:bg-blue-100 transition-colors"
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          View Document
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApplicantsDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

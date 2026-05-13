@@ -761,19 +761,12 @@ const AlumniCommunity = () => {
             </div>
           </div>
           
-          {/* Community Tabs */}
-          <Tabs defaultValue="discussions" className="mb-8">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="discussions">Discussions</TabsTrigger>
-              <TabsTrigger value="announcements">Announcements</TabsTrigger>
-              <TabsTrigger value="events">Events</TabsTrigger>
-              <TabsTrigger value="members">Members</TabsTrigger>
-              <TabsTrigger value="resources">Resources</TabsTrigger>
-            </TabsList>
+          
             
-            <TabsContent value="discussions" className="space-y-6 mt-6">
+            {/* Main content area */}
+            <div className={managedCommunities.some(c => c.id === selectedCommunity.id) ? "col-span-1 lg:col-span-2" : "col-span-3"}>
               {/* Posts */}
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 mb-6">
                 <div className="p-4 border-b border-gray-100">
                   <h2 className="font-semibold text-gray-800">Discussion</h2>
                 </div>
@@ -798,7 +791,7 @@ const AlumniCommunity = () => {
                   </form>
                   
                   <div className="space-y-6">
-                    {posts.length > 0 ? posts.map(post => (
+                    {posts.map(post => (
                       <div key={post.id} className="border-b border-gray-100 pb-6 last:border-b-0 last:pb-0">
                         <div className="flex items-start">
                           <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden mr-3">
@@ -828,7 +821,7 @@ const AlumniCommunity = () => {
                             </div>
                           </div>
                           
-                          {post.author.name === alumniProfile?.fullName && (
+                          {post.author.name === alumniProfile.fullName && (
                             <div className="ml-auto">
                               <DropdownMenu>
                                 <DropdownMenuTrigger className="outline-none">
@@ -851,153 +844,12 @@ const AlumniCommunity = () => {
                           )}
                         </div>
                       </div>
-                    )) : (
-                      <div className="text-center py-8">
-                        <p className="text-gray-500">No discussions yet</p>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               </div>
-            </TabsContent>
-            
-            <TabsContent value="announcements" className="mt-6 space-y-4">
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                  <h2 className="font-semibold text-gray-800">Announcements</h2>
-                </div>
-                <div className="p-4">
-                  {managedCommunities.some(c => c.id === selectedCommunity.id) && (
-                    <form onSubmit={handleAnnouncementSubmit} className="mb-6 border-b border-gray-100 pb-6">
-                      <textarea 
-                        className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-                        placeholder="Post an announcement for the community..." 
-                        rows={3}
-                        value={newAnnouncement}
-                        onChange={(e) => setNewAnnouncement(e.target.value)}
-                      ></textarea>
-                      <Button 
-                        type="submit" 
-                        className="w-full"
-                        disabled={!newAnnouncement.trim()}
-                      >
-                        Post Announcement
-                      </Button>
-                    </form>
-                  )}
-                  
-                  <div className="divide-y divide-gray-100">
-                    {announcements.length > 0 ? announcements.map(announcement => (
-                      <div key={announcement.id} className="py-4">
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="flex items-center gap-2">
-                            <Bell className="h-4 w-4 text-blue-600" />
-                            <h4 className="text-sm font-bold text-gray-900">{announcement.authorName || "Alumni Leader"}</h4>
-                          </div>
-                          <span className="text-[10px] text-gray-500">{formatTimestamp(announcement.createdAt)}</span>
-                        </div>
-                        <p className="text-[10px] text-gray-500 mb-2 ml-6">{announcement.authorTitle || "Community Leader"}</p>
-                        <p className="text-sm text-gray-700 ml-6">{announcement.content}</p>
-                      </div>
-                    )) : (
-                      <div className="text-center py-4 text-gray-500 text-sm">No announcements yet</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="events" className="mt-6 space-y-4">
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                  <h2 className="font-semibold text-gray-800">Upcoming Events</h2>
-                  {managedCommunities.some(c => c.id === selectedCommunity.id) && (
-                    <Button size="sm" variant="ghost" className="text-blue-600 text-xs">
-                      + Add Event
-                    </Button>
-                  )}
-                </div>
-                
-                <div className="p-4">
-                  {events.length === 0 ? (
-                    <p className="text-gray-500 text-sm text-center py-8">No upcoming events yet</p>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {events.map(event => (
-                        <div key={event.id} className="border border-gray-100 rounded-lg p-4">
-                          <h4 className="font-medium text-gray-800">{event.title}</h4>
-                          <div className="flex items-center mt-2 text-xs text-gray-600">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {event.date}
-                            <span className="mx-1">•</span>
-                            <Clock className="h-3 w-3 mr-1" />
-                            {event.time}
-                          </div>
-                          <p className="text-sm text-gray-500 mt-2 line-clamp-2">{event.description}</p>
-                          <div className="mt-4 flex justify-between items-center">
-                            <span className="text-xs text-gray-500">
-                              <Users className="h-3 w-3 inline mr-1" />
-                              {event.attendees || 0} attending
-                            </span>
-                            <Button size="sm" variant="outline" className="text-xs py-1 h-8">
-                              Details
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="members" className="mt-6 space-y-6">
-              {managedCommunities.some(c => c.id === selectedCommunity.id) && pendingApprovals.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-red-100">
-                  <div className="p-4 border-b border-red-100 flex justify-between items-center bg-red-50">
-                    <h2 className="font-semibold text-red-800">Pending Approvals</h2>
-                    <span className="bg-red-200 text-red-800 text-xs px-2 py-1 rounded-full">
-                      {pendingApprovals.length} New
-                    </span>
-                  </div>
-                  <div className="p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {pendingApprovals.map(member => (
-                        <div key={member.id} className="flex items-center justify-between border border-gray-100 p-3 rounded-lg bg-white">
-                          <div className="flex items-center">
-                            <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden mr-3">
-                              <img src={member.imageUrl} alt={member.name} className="h-full w-full object-cover" />
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-800">{member.name}</h4>
-                              <p className="text-xs text-gray-500">{member.role} • {member.year}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 p-2"
-                              onClick={() => handleMemberApproval(member.id, false)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50 p-2"
-                              onClick={() => handleMemberApproval(member.id, true)}
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
+              
+              {/* Members */}
               <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                   <h2 className="font-semibold text-gray-800">Members</h2>
@@ -1027,26 +879,8 @@ const AlumniCommunity = () => {
                   </div>
                 </div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="resources" className="mt-6">
-              <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 text-center">
-                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <BookOpen className="h-8 w-8 text-blue-400" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-700 mb-2">Community Resources</h3>
-                <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                  Share articles, tutorials, and important links with community members.
-                </p>
-                {managedCommunities.some(c => c.id === selectedCommunity.id) && (
-                  <Button className="flex items-center mx-auto gap-2">
-                    <PlusCircle className="h-4 w-4" />
-                    Add Resource
-                  </Button>
-                )}
-              </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
       )}
     </div>

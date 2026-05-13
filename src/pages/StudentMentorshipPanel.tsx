@@ -37,6 +37,7 @@ import {
   DialogDescription
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from '@/hooks/use-toast';
 import { db, auth } from '@/firebase';
 import { 
   collection, 
@@ -56,7 +57,7 @@ interface MentorshipRequest {
   mentorId: string;
   mentorName: string;
   requestDate: Timestamp;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: string;
   topic: string;
   message: string;
   mentorPhotoURL?: string;
@@ -107,8 +108,7 @@ const StudentMentorshipPanel: React.FC = () => {
     // 1. Listen for my mentorship requests
     const requestsQuery = query(
       collection(db, "mentorshipRequests"),
-      where("studentId", "==", currentUser.uid),
-      orderBy("requestDate", "desc")
+      where("studentId", "==", currentUser.uid)
     );
 
     const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
@@ -147,18 +147,83 @@ const StudentMentorshipPanel: React.FC = () => {
     };
   }, []);
 
+  // Handle cancelling a pending request
+  const handleCancelRequest = async (requestId: string) => {
+    try {
+      const requestRef = doc(db, "mentorshipRequests", requestId);
+      
+      // Before deleting, let's verify it's still pending
+      const requestSnap = await getDoc(requestRef);
+      if (!requestSnap.exists()) {
+        toast({
+          title: "Request not found",
+          description: "This request may have already been processed.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (requestSnap.data().status.toLowerCase() !== 'pending') {
+        toast({
+          title: "Cannot cancel request",
+          description: "This request has already been accepted or declined.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Delete the request
+      await updateDoc(requestRef, {
+        status: 'Cancelled',
+        cancelledAt: Timestamp.now()
+      });
+      
+      // Actually, standard behavior for "cancel" before it's seen might be deletion, 
+      // but marking as 'Cancelled' is better for history.
+      // However, if the user expects it to DISAPPEAR, we should delete it or filter it out.
+      // Let's mark it as cancelled for now.
+      
+      toast({
+        title: "Success",
+        description: "Mentorship request cancelled successfully.",
+      });
+    } catch (error) {
+      console.error("Error cancelling request:", error);
+      toast({
+        title: "Error",
+        description: "Failed to cancel request. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Format date from Timestamp
   const formatDate = (timestamp?: Timestamp) => {
-    if (!timestamp) return "N/A";
-    return new Date(timestamp.seconds * 1000).toLocaleDateString();
+    if (!timestamp) return "Just now";
+    try {
+      return new Date(timestamp.seconds * 1000).toLocaleDateString();
+    } catch (e) {
+      return "Just now";
+    }
   };
 
   // Get filtered data
   const getFilteredRequests = () => {
-    return mentorshipRequests.filter(r => 
-      (filterStatus === "all" || r.status === filterStatus) &&
-      (r.mentorName.toLowerCase().includes(searchQuery.toLowerCase()) || r.topic.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    return mentorshipRequests.filter(r => {
+      // Don't show cancelled requests in the main list
+      if (r.status.toLowerCase() === 'cancelled') return false;
+
+      const statusMatch = filterStatus === "all" || 
+        r.status.toLowerCase() === filterStatus.toLowerCase();
+      
+      const name = r.mentorName || 'Alumni';
+      const topic = r.topic || 'Mentorship';
+      
+      const searchMatch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          topic.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return statusMatch && searchMatch;
+    });
   };
 
   const getFilteredMentorships = () => {
@@ -170,9 +235,9 @@ const StudentMentorshipPanel: React.FC = () => {
 
   // Stats
   const stats = {
-    active: activeMentorships.filter(m => m.status === 'active').length,
-    pending: mentorshipRequests.filter(r => r.status === 'pending').length,
-    sessions: activeMentorships.reduce((acc, m) => acc + (m.sessions?.filter(s => s.status === 'completed').length || 0), 0),
+    active: activeMentorships.filter(m => m.status.toLowerCase() === 'active').length,
+    pending: mentorshipRequests.filter(r => r.status.toLowerCase() === 'pending').length,
+    sessions: activeMentorships.reduce((acc, m) => acc + (m.sessions?.filter(s => s.status.toLowerCase() === 'completed').length || 0), 0),
     total: activeMentorships.length + mentorshipRequests.length
   };
 
@@ -391,10 +456,10 @@ const StudentMentorshipPanel: React.FC = () => {
                 <div key={request.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div className="flex items-center gap-4">
                     <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold">
-                      {request.mentorName.charAt(0)}
+                      {(request.mentorName || 'A').charAt(0)}
                     </div>
                     <div>
-                      <h4 className="font-bold text-gray-900">{request.mentorName}</h4>
+                      <h4 className="font-bold text-gray-900">{request.mentorName || 'Alumni Mentor'}</h4>
                       <p className="text-sm text-gray-500">Requested: {formatDate(request.requestDate)}</p>
                     </div>
                   </div>
@@ -404,14 +469,19 @@ const StudentMentorshipPanel: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-4">
                     <Badge className={
-                      request.status === 'pending' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' :
-                      request.status === 'accepted' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
+                      request.status.toLowerCase() === 'pending' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' :
+                      request.status.toLowerCase() === 'accepted' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
                       'bg-red-100 text-red-700 hover:bg-red-100'
                     }>
                       {request.status.toUpperCase()}
                     </Badge>
-                    {request.status === 'pending' && (
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-50 hover:text-red-600">
+                    {(request.status === 'pending' || request.status === 'Pending') && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                        onClick={() => handleCancelRequest(request.id)}
+                      >
                         <XCircle className="h-4 w-4 mr-1" />
                         Cancel
                       </Button>

@@ -21,6 +21,7 @@ import {
   orderBy,
   limit,
   startAfter,
+  serverTimestamp,
   doc,
   getDoc,
   setDoc
@@ -29,6 +30,7 @@ import { db, auth } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { toast } from '@/hooks/use-toast';
 
 const AlumniDirectory = () => {
   const [alumni, setAlumni] = useState([]);
@@ -129,14 +131,15 @@ const AlumniDirectory = () => {
           }
         );
 
-        // Check existing mentorship requests
+        // Check existing mentorship requests from top-level collection
         const currentUser = auth.currentUser;
         if (currentUser) {
-          const mentorshipRef = collection(db, 'students', currentUser.uid, 'mentorships');
-          const mentorshipSnapshot = await getDocs(mentorshipRef);
+          const requestsRef = collection(db, 'mentorshipRequests');
+          const q = query(requestsRef, where('studentId', '==', currentUser.uid));
+          const querySnapshot = await getDocs(q);
           
           const requestedMentorships = {};
-          mentorshipSnapshot.forEach(doc => {
+          querySnapshot.forEach(doc => {
             const data = doc.data();
             if (data.mentorId) {
               requestedMentorships[data.mentorId] = data.status;
@@ -232,7 +235,10 @@ const AlumniDirectory = () => {
     }
     
     if (filterOptions.availability) {
-      results = results.filter(alumni => alumni.isAvailableForMentorship === true);
+      results = results.filter(alumni => 
+        alumni.isAvailableForMentorship === true || 
+        alumni.availableForMentorship === true
+      );
     }
     
     setFilteredAlumni(results);
@@ -257,48 +263,77 @@ const AlumniDirectory = () => {
     setSelectedAlumni(null);
   };
 
-  const requestMentorship = async (mentorId) => {
-    if (!auth.currentUser) return;
+  const requestMentorship = async (alumniDocId, mentorUserId, mentorName) => {
+    if (!auth.currentUser) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to request mentorship",
+        variant: "destructive",
+      });
+      return;
+    }
     
     try {
-      // Update local state
+      // Update local UI state immediately
       setMentorshipRequested(prev => ({
         ...prev,
-        [mentorId]: 'pending'
+        [mentorUserId]: 'Pending'
       }));
       
-      // Get current user data
-      const userDoc = await getDoc(doc(db, 'students', auth.currentUser.uid));
-      const userData = userDoc.data();
+      console.log(`Sending mentorship request to mentor: ${mentorName} (${mentorUserId})`);
+
+      // 1. Fetch Student Profile
+      const studentQuery = query(
+        collection(db, 'students'),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const studentSnapshot = await getDocs(studentQuery);
+      const studentData = !studentSnapshot.empty ? studentSnapshot.docs[0].data() : null;
       
-      // Add to student's mentorships collection
-      const studentMentorshipRef = doc(collection(db, 'students', auth.currentUser.uid, 'mentorships'));
-      await setDoc(studentMentorshipRef, {
-        mentorId,
-        status: 'pending',
-        timestamp: new Date()
-      });
-      
-      // Add to mentor's mentorshipRequests collection
-      const mentorRequestDoc = doc(collection(db, 'alumni_profiles', mentorId, 'mentorshipRequests'));
-      await setDoc(mentorRequestDoc, {
+      // 2. Prepare full data object with fallbacks
+      const finalStudentName = studentData?.fullName || auth.currentUser.displayName || 'Student';
+      const finalStudentBranch = studentData?.branch || 'General Branch';
+      const finalStudentYear = studentData?.year || 'Academic Year N/A';
+      const finalStudentPhoto = studentData?.profilePictureUrl || auth.currentUser.photoURL || '';
+
+      const requestPayload = {
+        mentorId: mentorUserId,
+        mentorName: mentorName || 'Alumni Mentor',
         studentId: auth.currentUser.uid,
-        studentName: userData?.fullName || 'Student',
-        branch: userData?.branch || '',
-        year: userData?.year || '',
-        status: 'pending',
-        timestamp: new Date()
+        studentName: finalStudentName,
+        studentBranch: finalStudentBranch,
+        studentYear: finalStudentYear,
+        studentProfileImage: finalStudentPhoto,
+        requestType: 'Mentorship',
+        type: 'Mentorship',
+        topic: 'General Mentorship',
+        status: 'Pending',
+        message: `Mentorship request from ${finalStudentName}`,
+        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        requestDate: serverTimestamp()
+      };
+
+      console.log("Request Payload:", requestPayload);
+
+      // 3. Save to Firestore
+      const requestRef = doc(collection(db, 'mentorshipRequests'));
+      await setDoc(requestRef, requestPayload);
+      
+      toast({
+        title: "Request Sent!",
+        description: `Your mentorship request has been sent to ${mentorName || 'the alumni'}.`,
       });
       
     } catch (error) {
       console.error("Error requesting mentorship:", error);
-      // Reset on error
+      // Reset local UI state on failure
       setMentorshipRequested(prev => {
         const newState = {...prev};
-        delete newState[mentorId];
+        delete newState[mentorUserId];
         return newState;
       });
-      alert("Failed to request mentorship. Please try again later.");
+      alert("Failed to request mentorship. Please check your connection and try again.");
     }
   };
 
@@ -529,7 +564,7 @@ const AlumniDirectory = () => {
                       
                       {/* Mentorship Availability */}
                       <div className="mt-4 flex justify-between items-center">
-                        {alumnus.isAvailableForMentorship ? (
+                        {(alumnus.isAvailableForMentorship || alumnus.availableForMentorship) ? (
                           <div className="flex items-center">
                             <Star size={14} className="text-yellow-500 mr-1" />
                             <span className="text-sm text-green-600">Available for mentorship</span>
@@ -704,7 +739,7 @@ const AlumniDirectory = () => {
                   {/* Mentorship */}
                   <div className="mb-6">
                     <h3 className="text-lg font-semibold mb-3">Mentorship</h3>
-                    {selectedAlumni.isAvailableForMentorship ? (
+                    {(selectedAlumni.isAvailableForMentorship || selectedAlumni.availableForMentorship) ? (
                       <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4">
                         <div className="flex items-center text-green-700 mb-2">
                           <Star size={16} className="mr-2" />
@@ -718,20 +753,20 @@ const AlumniDirectory = () => {
                       </div>
                     )}
                     
-                    {mentorshipRequested[selectedAlumni.id] ? (
+                    {mentorshipRequested[selectedAlumni.userId] ? (
                       <Button 
                         disabled
                         className="w-full"
                       >
-                        {mentorshipRequested[selectedAlumni.id] === 'pending' ? 'Mentorship Requested' : 
-                         mentorshipRequested[selectedAlumni.id] === 'accepted' ? 'Mentorship Active' : 
+                        {mentorshipRequested[selectedAlumni.userId] === 'Pending' ? 'Mentorship Requested' : 
+                         mentorshipRequested[selectedAlumni.userId] === 'Accepted' ? 'Mentorship Active' : 
                          'Request Declined'}
                       </Button>
                     ) : (
                       <Button 
                         className="w-full"
-                        onClick={() => requestMentorship(selectedAlumni.id)}
-                        disabled={!selectedAlumni.isAvailableForMentorship}
+                        onClick={() => requestMentorship(selectedAlumni.id, selectedAlumni.userId, selectedAlumni.fullName)}
+                        disabled={!(selectedAlumni.isAvailableForMentorship || selectedAlumni.availableForMentorship)}
                       >
                         Request Mentorship
                       </Button>

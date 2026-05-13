@@ -60,7 +60,8 @@ import {
   serverTimestamp, 
   orderBy,
   onSnapshot,
-  Timestamp
+  Timestamp,
+  increment
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -162,15 +163,15 @@ const StudentOpportunities = () => {
       try {
         const q = query(
           collection(db, "applications"),
-          where("studentId", "==", currentUser.uid),
-          orderBy("appliedAt", "desc")
+          where("studentId", "==", currentUser.uid)
+          // Removed orderBy("appliedAt", "desc") to avoid composite index requirement
         );
         
         // Set up real-time listener
         const unsubscribe = onSnapshot(q, async (querySnapshot) => {
           const applicationsData = querySnapshot.docs.map(doc => ({
             id: doc.id,
-            ...doc.data()
+            ...(doc.data() as any)
           }));
           
           // Enrich applications with opportunity details
@@ -196,6 +197,12 @@ const StudentOpportunities = () => {
               }
             })
           );
+          // Sort applications by appliedAt descending in-memory
+          enrichedApplications.sort((a: any, b: any) => {
+            const dateA = a.appliedAt?.toDate ? a.appliedAt.toDate() : new Date(a.appliedAt || 0);
+            const dateB = b.appliedAt?.toDate ? b.appliedAt.toDate() : new Date(b.appliedAt || 0);
+            return dateB.getTime() - dateA.getTime();
+          });
           
           setApplications(enrichedApplications);
         }, (error) => {
@@ -301,7 +308,7 @@ const StudentOpportunities = () => {
       
       // Update the opportunity's application count
       await updateDoc(opportunityRef, {
-        applications: (opportunityData.applications || 0) + 1
+        applications: increment(1)
       });
       
       // Reset form and state

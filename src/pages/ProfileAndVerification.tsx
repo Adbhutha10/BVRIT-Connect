@@ -29,8 +29,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { db, auth } from '@/firebase';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { toast } from '@/hooks/use-toast';
+import { doc, onSnapshot, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 const ProfileAndVerification = () => {
   const [isEditing, setIsEditing] = useState(false);
@@ -58,27 +58,32 @@ const ProfileAndVerification = () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const unsubscribe = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    const profileQuery = query(
+      collection(db, "alumni_profiles"),
+      where("userId", "==", user.uid)
+    );
+
+    const unsubscribe = onSnapshot(profileQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
         setProfileData({
-          fullName: data.fullName || data.name || 'User',
+          fullName: data.fullName || 'User',
           graduationYear: data.graduationYear || '',
           branch: data.branch || '',
-          jobTitle: data.position || '',
+          jobTitle: data.jobTitle || '',
           company: data.company || '',
           industry: data.industry || 'Technology',
           location: data.location || 'Hyderabad, India',
           about: data.bio || '',
           skills: data.skills || [],
-          education: data.education || [
+          education: (Array.isArray(data.education) && data.education.length > 0) ? data.education : [
             { degree: `B.Tech in ${data.branch || 'Engineering'}`, institution: 'BVRIT Narsapur', year: data.graduationYear || '' }
           ],
-          experience: data.experience || [
-            { role: data.position || '', company: data.company || '', duration: 'Present', description: '' }
+          experience: (Array.isArray(data.experience) && data.experience.length > 0) ? data.experience : [
+            { role: data.jobTitle || '', company: data.company || '', duration: 'Present', description: '' }
           ],
-          willingToMentor: data.willingToMentor !== undefined ? data.willingToMentor : true,
-          linkedinUrl: data.linkedin || '',
+          willingToMentor: data.availableForMentorship !== undefined ? data.availableForMentorship : true,
+          linkedinUrl: data.linkedIn || '',
           githubUrl: data.github || '',
           profilePictureUrl: data.profilePictureUrl || '',
           verificationStatus: data.verificationStatus || 'verified'
@@ -101,33 +106,41 @@ const ProfileAndVerification = () => {
   const handleSaveProfile = async () => {
     if (!auth.currentUser) return;
     try {
-      const userRef = doc(db, "users", auth.currentUser.uid);
-      await setDoc(userRef, {
-        fullName: profileData.fullName,
-        bio: profileData.about,
-        position: profileData.jobTitle,
-        company: profileData.company,
-        location: profileData.location,
-        linkedin: profileData.linkedinUrl,
-        github: profileData.githubUrl,
-        profilePictureUrl: profileData.profilePictureUrl,
-        willingToMentor: profileData.willingToMentor,
-        updatedAt: new Date()
-      }, { merge: true });
+      const profileQuery = query(
+        collection(db, "alumni_profiles"),
+        where("userId", "==", auth.currentUser.uid)
+      );
+      
+      const querySnapshot = await getDocs(profileQuery);
+      
+      if (!querySnapshot.empty) {
+        const profileDoc = querySnapshot.docs[0];
+        await setDoc(doc(db, "alumni_profiles", profileDoc.id), {
+          fullName: profileData.fullName,
+          bio: profileData.about,
+          jobTitle: profileData.jobTitle,
+          company: profileData.company,
+          location: profileData.location,
+          linkedIn: profileData.linkedinUrl,
+          github: profileData.githubUrl,
+          profilePictureUrl: profileData.profilePictureUrl,
+          availableForMentorship: profileData.willingToMentor,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
+      
       setIsEditing(false);
-      toast({
-        title: "Profile Synchronized",
-        description: "Your professional details and photo are now live.",
-      });
+      toast.success("Profile Synchronized. Your professional details and photo are now live.");
     } catch (error) {
       console.error("Error saving profile:", error);
+      toast.error("Failed to update profile.");
     }
   };
 
   if (loading) return <div className="p-20 text-center animate-pulse text-indigo-600 font-bold">Retrieving Verified Identity...</div>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-700">
+    <div className="p-6 mt-4 max-w-7xl mx-auto animate-in fade-in duration-700">
       
       {/* Page Title & Actions */}
       <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -299,7 +312,7 @@ const ProfileAndVerification = () => {
                 Career Trajectory
               </h4>
               <div className="space-y-10">
-                {profileData.experience.map((exp, index) => (
+                {Array.isArray(profileData.experience) && profileData.experience.map((exp, index) => (
                   <div key={index} className="flex gap-6">
                     <div className="flex flex-col items-center">
                       <div className="h-12 w-12 bg-white border-2 border-purple-100 rounded-2xl flex items-center justify-center text-purple-600 shadow-sm relative z-10">
@@ -338,7 +351,7 @@ const ProfileAndVerification = () => {
                 <Award className="h-4 w-4 mr-3 text-indigo-600" /> Core Expertise
               </h4>
               <div className="flex flex-wrap gap-2">
-                {(profileData.skills.length > 0 ? profileData.skills : ['System Design', 'Strategic Mentoring', 'Product Management', 'Leadership']).map((skill, index) => (
+                {(Array.isArray(profileData.skills) ? (profileData.skills.length > 0 ? profileData.skills : ['System Design', 'Strategic Mentoring', 'Product Management', 'Leadership']) : ['System Design', 'Strategic Mentoring', 'Product Management', 'Leadership']).map((skill, index) => (
                   <Badge 
                     key={index}
                     className="bg-indigo-50/50 text-indigo-600 border-none px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors cursor-default"
@@ -355,7 +368,7 @@ const ProfileAndVerification = () => {
                 <GraduationCap className="h-4 w-4 mr-3 text-purple-600" /> Academic Credentials
               </h4>
               <div className="space-y-8">
-                {profileData.education.map((edu, index) => (
+                {Array.isArray(profileData.education) && profileData.education.map((edu, index) => (
                   <div key={index} className="flex gap-4">
                     <div className="h-10 w-10 bg-purple-50 rounded-xl flex-shrink-0 flex items-center justify-center">
                       <BookOpen className="h-5 w-5 text-purple-600" />

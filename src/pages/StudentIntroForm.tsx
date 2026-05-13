@@ -29,11 +29,12 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 const StudentIntroForm = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [resumeFile, setResumeFile] = useState(null);
-  const [profilePictureFile, setProfilePictureFile] = useState(null);
-  const [profilePicturePreview, setProfilePicturePreview] = useState(null);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     fullName: '',
+    email: '',
     rollNo: '',
     branch: '',
     year: '',
@@ -44,23 +45,35 @@ const StudentIntroForm = () => {
     intent: ''
   });
 
-  const handleInputChange = (e) => {
+  // Pre-fill name & email from the Firebase Auth account created during sign-up
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        fullName: prev.fullName || user.displayName || '',
+        email: prev.email || user.email || '',
+      }));
+    }
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (value, name) => {
+  const handleSelectChange = (value: string, name: string) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleResumeChange = (e) => {
+  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setResumeFile(file);
     }
   };
 
-  const handleProfilePictureChange = (e) => {
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setProfilePictureFile(file);
@@ -68,29 +81,29 @@ const StudentIntroForm = () => {
       // Create preview for profile picture
       const reader = new FileReader();
       reader.onloadend = () => {
-        setProfilePicturePreview(reader.result);
+        setProfilePicturePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
   // Convert file to base64 for local storage
-  const fileToBase64 = (file) => {
+  const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = (error) => reject(error);
     });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
       // Create an object to store local file info
-      const fileData = {};
+      const fileData: Record<string, string> = {};
       
       // 1. Save profile picture to localStorage if provided
       if (profilePictureFile) {
@@ -178,6 +191,11 @@ const StudentIntroForm = () => {
                   <User className="mr-2 h-5 w-5" />
                   Personal Information
                 </h2>
+                {/* Auto-filled notice */}
+                <div className="mb-4 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" /></svg>
+                  <span>Name and email have been pre-filled from your account. You can edit them if needed.</span>
+                </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="fullName" className="text-gray-700">Full Name</Label>
@@ -188,6 +206,19 @@ const StudentIntroForm = () => {
                       onChange={handleInputChange}
                       className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Enter your full name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="email" className="text-gray-700">Email Address</Label>
+                    <Input 
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="your@email.com"
                       required
                     />
                   </div>

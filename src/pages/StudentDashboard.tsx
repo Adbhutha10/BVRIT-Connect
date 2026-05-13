@@ -23,7 +23,8 @@ import {
   XCircle,
   Building2,
   Menu,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ import StudentMentorshipPanel from '@/pages/StudentMentorshipPanel';
 import StudentProfile from '@/pages/StudentProfile';
 import StudentSettings from '@/pages/StudentSettings';
 import StudentCommunication from '@/pages/StudentCommunication';
+import StudentMeetings from '@/pages/StudentMeetings';
 import Chatbot from './Chatbot';  
 
 // Firebase imports
@@ -77,6 +79,7 @@ const StudentDashboard = () => {
   const [metrics, setMetrics] = useState({
     sentRequestsCount: 0,
     activeMentorshipsCount: 0,
+    currentMentorshipsCount: 0,
     upcomingMeetingsCount: 0,
     eventsRegisteredCount: 0,
     pendingApplicationsCount: 0
@@ -121,6 +124,27 @@ const StudentDashboard = () => {
     
     return () => unsubscribeAuth();
   }, [navigate]);
+
+  useEffect(() => {
+    if (!studentProfile) return;
+    
+    // Update lastActive status
+    const updateStatus = async () => {
+      try {
+        const profileRef = doc(db, 'students', studentProfile.id);
+        await updateDoc(profileRef, {
+          lastActive: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error updating student status:", error);
+      }
+    };
+
+    updateStatus();
+    const interval = setInterval(updateStatus, 120000); // Every 2 minutes
+    
+    return () => clearInterval(interval);
+  }, [studentProfile]);
 
   // Load notifications when student profile is available
   useEffect(() => {
@@ -206,7 +230,7 @@ const StudentDashboard = () => {
             
             requestsList.push(requestItem);
             
-            if (requestData.status === 'pending') {
+            if (requestData.status === 'pending' || requestData.status === 'Pending') {
               pendingCount++;
             }
           }
@@ -229,7 +253,7 @@ const StudentDashboard = () => {
     const mentorshipsQuery = query(
       collection(db, 'mentorships'),
       where('studentId', '==', studentProfile.userId),
-      where('status', '==', 'active')
+      where('status', 'in', ['active', 'Active'])
     );
     
     const unsubscribeMentorships = onSnapshot(mentorshipsQuery, async (snapshot) => {
@@ -263,11 +287,28 @@ const StudentDashboard = () => {
       }
       
       setActiveConnections(connectionsList);
-      setMetrics(prev => ({...prev, activeMentorshipsCount: connectionsList.length}));
+      setMetrics(prev => ({...prev, currentMentorshipsCount: connectionsList.length}));
     });
     
     return () => unsubscribeMentorships();
   }, [studentProfile]);
+
+  // Load total available mentors count
+  useEffect(() => {
+    // We listen to the whole collection and filter in memory if needed, 
+    // but better to use a robust query. 
+    // Since Firestore 'OR' is limited, we'll fetch where availableForMentorship is true.
+    const availableMentorsQuery = query(
+      collection(db, 'alumni_profiles'),
+      where('availableForMentorship', '==', true)
+    );
+    
+    const unsubscribeAvailable = onSnapshot(availableMentorsQuery, (snapshot) => {
+      setMetrics(prev => ({...prev, activeMentorshipsCount: snapshot.size}));
+    });
+    
+    return () => unsubscribeAvailable();
+  }, []);
 
   // Load upcoming meetings
   useEffect(() => {
@@ -490,8 +531,7 @@ const StudentDashboard = () => {
           oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
           const postsSnapshot = await getDocs(query(
             collection(db, 'communityPosts'),
-            where('communityId', '==', communityId),
-            where('createdAt', '>=', oneWeekAgo)
+            where('communityId', '==', communityId)
           ));
           
           communitiesList.push({
@@ -553,6 +593,15 @@ const StudentDashboard = () => {
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
   
   // Function to handle navigation item click on mobile
   const handleNavItemClick = (pageId) => {
@@ -611,7 +660,7 @@ const StudentDashboard = () => {
       {/* Sidebar - hidden on mobile and displayed as overlay when toggled */}
       <div className={`${
         isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      } transition-transform duration-300 fixed lg:relative w-64 bg-white shadow-md h-full z-30 lg:flex lg:flex-shrink-0`}>
+      } transition-transform duration-300 fixed lg:sticky lg:top-0 lg:h-screen w-64 bg-white shadow-md z-30 lg:flex lg:flex-shrink-0 overflow-y-auto`}>
         <div className="flex flex-col h-full">
           <div className="p-6 flex justify-between items-center">
             <div>
@@ -634,6 +683,7 @@ const StudentDashboard = () => {
                 { id: 'opportunities', name: 'Opportunities Board', icon: <Briefcase className="w-5 h-5" /> },
                 { id: 'communities', name: 'Communities', icon: <BookOpen className="w-5 h-5" /> },
                 { id: 'mentorship', name: 'Mentorship Requests', icon: <Handshake className="w-5 h-5" /> },
+                { id: 'schedule', name: 'Scheduled Meetings', icon: <Clock className="w-5 h-5" /> },
                 { id: 'communication', name: 'Communication', icon: <MessageCircle className="w-5 h-5" /> },
                 { id: 'profile', name: 'Profile', icon: <User className="w-5 h-5" /> },
                 { id: 'settings', name: 'Settings', icon: <Settings className="w-5 h-5" /> },
@@ -654,13 +704,23 @@ const StudentDashboard = () => {
               ))}
             </ul>
           </nav>
+          
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={handleLogout}
+              className="flex items-center w-full p-3 px-6 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="ml-3 font-medium">Logout</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 w-full">
         {/* Top Navigation */}
-        <header className="bg-white shadow-sm py-4 px-4 md:px-8 flex justify-between items-center sticky top-0 z-10">
+        <header className="bg-white shadow-sm py-4 px-4 md:px-8 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center">
             {/* Hamburger menu - visible only on mobile */}
             <button 
@@ -771,7 +831,7 @@ const StudentDashboard = () => {
                 <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Active Mentorships</p>
+                      <p className="text-sm font-medium text-gray-500">Active Mentors</p>
                       <h3 className="text-3xl font-bold mt-1">{metrics.activeMentorshipsCount}</h3>
                     </div>
                     <div className="p-3 bg-green-50 rounded-full">
@@ -1189,14 +1249,7 @@ const StudentDashboard = () => {
               </div>
               
               {/* Chatbot UI */}
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h2 className="text-lg font-semibold text-gray-800">BVRIT Connect Assistant</h2>
-                </div>
-                <div className="p-6">
-                  <Chatbot />
-                </div>
-              </div>
+              <Chatbot />
             </div>
           )}
           
@@ -1206,6 +1259,7 @@ const StudentDashboard = () => {
           {activePage === 'opportunities' && <StudentOpportunities />}
           {activePage === 'communities' && <StudentCommunity />}
           {activePage === 'mentorship' && <StudentMentorshipPanel />}
+          {activePage === 'schedule' && <StudentMeetings />}
           {activePage === 'communication' && <StudentCommunication />}
           {activePage === 'profile' && <StudentProfile />}
           {activePage === 'settings' && <StudentSettings />}

@@ -62,21 +62,48 @@ const ChatScheduling = () => {
     notes: ""
   });
   
-  // Fetch students for dropdown
+  // Fetch mentees for dropdown
   useEffect(() => {
     if (!user) return;
     
+    // Fetch from mentorships where the current user is the mentor
     const q = query(
-      collection(db, "users"),
-      where("role", "==", "student")
+      collection(db, "mentorships"),
+      where("mentorId", "==", user.uid)
     );
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const studentsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setStudents(studentsData);
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const menteesData = [];
+      
+      for (const mentorshipDoc of snapshot.docs) {
+        const data = mentorshipDoc.data();
+        
+        // Fetch student details from users collection to get the most accurate name
+        try {
+          const studentRef = doc(db, "users", data.studentId);
+          const studentSnap = await getDoc(studentRef);
+          
+          let displayName = data.studentName;
+          
+          if (studentSnap.exists()) {
+            displayName = studentSnap.data().displayName || studentSnap.data().fullName || displayName;
+          }
+          
+          menteesData.push({
+            id: data.studentId,
+            displayName: displayName || 'Student',
+            mentorshipId: mentorshipDoc.id
+          });
+        } catch (error) {
+          console.error("Error fetching student details:", error);
+          menteesData.push({
+            id: data.studentId,
+            displayName: data.studentName || 'Student',
+            mentorshipId: mentorshipDoc.id
+          });
+        }
+      }
+      setStudents(menteesData);
     });
     
     return unsubscribe;
@@ -306,7 +333,8 @@ const ChatScheduling = () => {
         link: formData.link,
         notes: formData.notes,
         status: "Scheduled",
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        createdAt: isEditing ? undefined : serverTimestamp()
       };
       
       if (isEditing) {
@@ -318,7 +346,6 @@ const ChatScheduling = () => {
         });
       } else {
         // Add new meeting
-        meetingData.createdAt = serverTimestamp();
         await addDoc(collection(db, "meetings"), meetingData);
         toast({
           title: "Meeting scheduled",
@@ -468,141 +495,7 @@ const ChatScheduling = () => {
     }
   };
   
-  const ScheduleForm = () => {
-    const isEditing = editingMeetingId !== null;
-    
-    return (
-      <Card className="p-6 mb-6">
-        <h3 className="text-lg font-semibold mb-4">
-          {isEditing ? 'Edit Meeting' : 'Schedule New Meeting'}
-        </h3>
-        
-        <form onSubmit={handleSubmitSchedule}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <Label htmlFor="student">Student</Label>
-              <Select 
-                value={formData.student} 
-                onValueChange={(value) => handleSelectChange("student", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select student" />
-                </SelectTrigger>
-                <SelectContent>
-                  {students.map(student => (
-                    <SelectItem key={student.id} value={student.displayName}>
-                      {student.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="topic">Meeting Topic</Label>
-              <Input 
-                id="topic" 
-                placeholder="E.g., Career Guidance, Project Review" 
-                value={formData.topic}
-                onChange={handleFormChange}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="date">Date</Label>
-              <Input 
-                id="date" 
-                type="date" 
-                value={formData.date}
-                onChange={handleFormChange}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="time">Time</Label>
-              <Input 
-                id="time" 
-                type="time" 
-                value={formData.time}
-                onChange={handleFormChange}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="duration">Duration</Label>
-              <Select 
-                value={formData.duration} 
-                onValueChange={(value) => handleSelectChange("duration", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15 min">15 minutes</SelectItem>
-                  <SelectItem value="30 min">30 minutes</SelectItem>
-                  <SelectItem value="45 min">45 minutes</SelectItem>
-                  <SelectItem value="60 min">1 hour</SelectItem>
-                  <SelectItem value="90 min">1.5 hours</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="platform">Meeting Platform</Label>
-              <Select 
-                value={formData.platform} 
-                onValueChange={(value) => handleSelectChange("platform", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select platform" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Google Meet">Google Meet</SelectItem>
-                  <SelectItem value="Zoom">Zoom</SelectItem>
-                  <SelectItem value="Microsoft Teams">Microsoft Teams</SelectItem>
-                  <SelectItem value="Skype">Skype</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <div className="mb-4">
-            <Label htmlFor="link">Meeting Link</Label>
-            <Input 
-              id="link" 
-              placeholder="Paste meeting URL" 
-              value={formData.link}
-              onChange={handleFormChange}
-            />
-          </div>
-          
-          <div className="mb-6">
-            <Label htmlFor="notes">Meeting Notes/Agenda</Label>
-            <textarea 
-              id="notes" 
-              className="w-full p-2 border rounded-md h-24" 
-              placeholder="Describe the purpose and agenda of the meeting"
-              value={formData.notes}
-              onChange={handleFormChange}
-            />
-          </div>
-          
-          <div className="flex justify-end space-x-3">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleCancelScheduling}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-              {isEditing ? 'Update Meeting' : 'Schedule Meeting'}
-            </Button>
-          </div>
-        </form>
-      </Card>
-    );
-  };
+
 
   return (
     <div className="p-8">
@@ -624,7 +517,137 @@ const ChatScheduling = () => {
       </div>
 
       {/* Schedule Form */}
-      {showScheduleForm && <ScheduleForm />}
+      {showScheduleForm && (
+        <Card className="p-6 mb-6">
+          <h3 className="text-lg font-semibold mb-4">
+            {editingMeetingId !== null ? 'Edit Meeting' : 'Schedule New Meeting'}
+          </h3>
+          
+          <form onSubmit={handleSubmitSchedule}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label htmlFor="student">Student</Label>
+                <Select 
+                  value={formData.student} 
+                  onValueChange={(value) => handleSelectChange("student", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {students.map(student => (
+                      <SelectItem key={student.id} value={student.displayName}>
+                        {student.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="topic">Meeting Topic</Label>
+                <Input 
+                  id="topic" 
+                  placeholder="E.g., Career Guidance, Project Review" 
+                  value={formData.topic}
+                  onChange={handleFormChange}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="date">Date</Label>
+                <Input 
+                  id="date" 
+                  type="date" 
+                  value={formData.date}
+                  onChange={handleFormChange}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="time">Time</Label>
+                <Input 
+                  id="time" 
+                  type="time" 
+                  value={formData.time}
+                  onChange={handleFormChange}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="duration">Duration</Label>
+                <Select 
+                  value={formData.duration} 
+                  onValueChange={(value) => handleSelectChange("duration", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select duration" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15 min">15 minutes</SelectItem>
+                    <SelectItem value="30 min">30 minutes</SelectItem>
+                    <SelectItem value="45 min">45 minutes</SelectItem>
+                    <SelectItem value="60 min">1 hour</SelectItem>
+                    <SelectItem value="90 min">1.5 hours</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="platform">Meeting Platform</Label>
+                <Select 
+                  value={formData.platform} 
+                  onValueChange={(value) => handleSelectChange("platform", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select platform" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Google Meet">Google Meet</SelectItem>
+                    <SelectItem value="Zoom">Zoom</SelectItem>
+                    <SelectItem value="Microsoft Teams">Microsoft Teams</SelectItem>
+                    <SelectItem value="Skype">Skype</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <Label htmlFor="link">Meeting Link</Label>
+              <Input 
+                id="link" 
+                placeholder="Paste meeting URL" 
+                value={formData.link}
+                onChange={handleFormChange}
+              />
+            </div>
+            
+            <div className="mb-6">
+              <Label htmlFor="notes">Meeting Notes/Agenda</Label>
+              <textarea 
+                id="notes" 
+                className="w-full p-2 border rounded-md h-24" 
+                placeholder="Describe the purpose and agenda of the meeting"
+                value={formData.notes}
+                onChange={handleFormChange}
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleCancelScheduling}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                {editingMeetingId !== null ? 'Update Meeting' : 'Schedule Meeting'}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {/* Calendar View */}
       <Card className="mb-8 p-6">

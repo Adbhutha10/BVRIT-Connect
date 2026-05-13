@@ -62,7 +62,8 @@ import {
   addDoc, 
   serverTimestamp, 
   orderBy, 
-  Timestamp 
+  Timestamp,
+  getDocs 
 } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
 
@@ -114,6 +115,26 @@ const RequestLists: React.FC = () => {
   const [acceptMessage, setAcceptMessage] = useState('');
   const [declineReason, setDeclineReason] = useState('');
 
+  // Profile verification state
+  const [studentProfile, setStudentProfile] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
+  const fetchStudentProfile = async (studentId: string) => {
+    setLoadingProfile(true);
+    setStudentProfile(null);
+    try {
+      const studentQuery = query(collection(db, 'students'), where('userId', '==', studentId));
+      const snapshot = await getDocs(studentQuery);
+      if (!snapshot.empty) {
+        setStudentProfile(snapshot.docs[0].data());
+      }
+    } catch (error) {
+      console.error("Error fetching student profile:", error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   // Fetch requests from Firestore
   useEffect(() => {
     if (!user) return;
@@ -123,8 +144,7 @@ const RequestLists: React.FC = () => {
     // Query mentor's requests
     const q = query(
       collection(db, "mentorshipRequests"),
-      where("mentorId", "==", user.uid),
-      orderBy("timestamp", "desc")
+      where("mentorId", "==", user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -202,6 +222,7 @@ const RequestLists: React.FC = () => {
   const handleViewRequest = (request: StudentRequest) => {
     setSelectedRequest(request);
     setViewDetailDialog(true);
+    fetchStudentProfile(request.studentId);
   };
 
   // Handle preparing to accept a request
@@ -945,24 +966,59 @@ const RequestLists: React.FC = () => {
                   <div className="space-y-4">
                     {/* Student Information */}
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="flex items-center mb-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
-                          {selectedRequest.student.profileImage ? (
-                            <img 
-                              src={selectedRequest.student.profileImage}
-                              alt={selectedRequest.student.name}
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <span className="text-blue-600 font-bold">
-                              {selectedRequest.student.name.split(' ').map(n => n[0]).join('')}
-                            </span>
-                          )}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                            {selectedRequest.student.profileImage ? (
+                              <img 
+                                src={selectedRequest.student.profileImage}
+                                alt={selectedRequest.student.name}
+                                className="w-10 h-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-blue-600 font-bold">
+                                {selectedRequest.student.name.split(' ').map(n => n[0]).join('')}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-medium">{selectedRequest.student.name}</p>
+                            <p className="text-xs text-gray-500">{selectedRequest.student.branch} • {selectedRequest.student.year}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{selectedRequest.student.name}</p>
-                          <p className="text-xs text-gray-500">{selectedRequest.student.branch} • {selectedRequest.student.year}</p>
-                        </div>
+                      </div>
+
+                      {/* Profile Verification Section */}
+                      <div className="border-t pt-3 mt-3">
+                        <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Student Verification</h4>
+                        {loadingProfile ? (
+                          <div className="flex items-center gap-2 text-sm text-gray-500">
+                            <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            Loading full profile...
+                          </div>
+                        ) : studentProfile ? (
+                          <div className="space-y-2">
+                            {studentProfile.bio && (
+                              <p className="text-sm text-gray-700 italic">"{studentProfile.bio}"</p>
+                            )}
+                            {studentProfile.skills && (
+                              <div className="flex flex-wrap gap-1">
+                                <span className="text-xs font-medium text-gray-500">Skills:</span>
+                                {studentProfile.skills.split(',').map((skill, i) => (
+                                  <span key={i} className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+                                    {skill.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex gap-4 text-xs text-gray-500">
+                              <span>GPA: {studentProfile.gpa || 'N/A'}</span>
+                              <span>Interest: {studentProfile.interest || 'N/A'}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">Profile details unavailable</p>
+                        )}
                       </div>
                     </div>
                     

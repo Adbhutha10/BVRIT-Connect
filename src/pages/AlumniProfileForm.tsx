@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,8 +44,8 @@ const AlumniProfileForm = () => {
 
   const [formData, setFormData] = useState({
     // Basic Information
-    fullName: '',
-    email: '',
+    fullName: auth.currentUser?.displayName || '',
+    email: auth.currentUser?.email || '',
     graduationYear: '',
     branch: '',
 
@@ -88,6 +88,18 @@ const AlumniProfileForm = () => {
     isAvailable: true,
     availableSlots: '3',
   });
+
+  // Pre-fill name & email from the Firebase Auth account created during sign-up
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        fullName: prev.fullName || user.displayName || '',
+        email: prev.email || user.email || '',
+      }));
+    }
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -258,7 +270,7 @@ const AlumniProfileForm = () => {
 
         // Mentorship
         isAvailable: formData.isAvailable,
-        availableForMentorship: formData.availableForMentorship,
+        isAvailableForMentorship: formData.availableForMentorship,
         mentoringAreas: formData.mentoringAreas,
         preferredMeetingTypes: formData.preferredMeetingTypes,
         maxMentees: parseInt(formData.maxMentees) || 5,
@@ -393,6 +405,11 @@ const AlumniProfileForm = () => {
                   <User className="mr-3 h-6 w-6" />
                   Personal Information
                 </h2>
+                {/* Auto-filled notice */}
+                <div className="mb-6 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" /></svg>
+                  <span>Name and email have been pre-filled from your account. You can edit them if needed.</span>
+                </div>
                 <div className="grid md:grid-cols-2 gap-5">
                   <div>
                     <Label htmlFor="fullName" className="text-gray-800 font-medium">Full Name</Label>

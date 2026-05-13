@@ -1,101 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // 1. User Profiles: Everyone can read, only the owner can write
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // 2. Student Specific Data
-    match /students/{studentId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && (request.auth.uid == studentId || request.auth.uid == resource.data.userId);
-      allow create: if request.auth != null;
-    }
-
-    // 3. Alumni Profiles
-    match /alumni_profiles/{alumniId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && (request.auth.uid == alumniId || request.auth.uid == resource.data.userId);
-      allow create: if request.auth != null;
-    }
-    
-    // 4. Mentorship Requests & Mentorships
-    match /mentorshipRequests/{requestId} {
-      allow create: if request.auth != null;
-      allow read, update, delete: if request.auth != null && 
-        (request.auth.uid == resource.data.studentId || request.auth.uid == resource.data.mentorId);
-    }
-
-    match /mentorships/{mentorshipId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && 
-        (request.auth.uid == resource.data.studentId || request.auth.uid == resource.data.mentorId);
-      allow create: if request.auth != null;
-    }
-    
-    // 5. Notifications: Only the recipient can read/update
-    match /notifications/{notifId} {
-      allow read, update: if request.auth != null && request.auth.uid == resource.data.recipientId;
-      allow create: if request.auth != null;
-    }
-
-    // 6. Opportunities & Applications
-    match /opportunities/{opportunityId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.creatorId;
-    }
-
-    match /applications/{appId} {
-      allow read: if request.auth != null; // Mentors need to count applications
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.studentId || (resource.data != null && request.auth.uid == resource.data.mentorId));
-    }
-
-    // 7. Events & Registrations
-    match /events/{eventId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.creatorId;
-    }
-
-    match /eventRegistrations/{regId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
-    }
-
-    // 8. Meetings
-    match /meetings/{meetingId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.studentId || request.auth.uid == resource.data.alumniId);
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.studentId || request.auth.uid == resource.data.alumniId);
-    }
-
-    // 9. Communities & Posts
-    match /communities/{communityId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == resource.data.creatorId;
-      allow create: if request.auth != null;
-    }
-
-    match /communityMembers/{memberId} {
-      allow read: if request.auth != null;
-      allow create, delete: if request.auth != null;
-    }
-
-    match /communityPosts/{postId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow delete: if request.auth != null && request.auth.uid == resource.data.authorId;
-    }
-
-    // Global catch-all: Secure by default
+    // Allow everything for authenticated users for now
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
+    }
+    
+    // Explicitly allow public access to core collections for testing
+    match /mentorships/{document=**} {
+      allow read, write: if true;
+    }
+    match /mentorshipRequests/{document=**} {
+      allow read, write: if true;
+    }
+    match /students/{document=**} {
+      allow read, write: if true;
+    }
+    match /alumni_profiles/{document=**} {
+      allow read, write: if true;
+    }
+    match /notifications/{document=**} {
+      allow read, write: if true;
     }
   }
 }

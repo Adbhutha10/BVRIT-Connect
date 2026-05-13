@@ -29,44 +29,47 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { db } from '@/firebase';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { toast } from 'sonner';
 
-const AlumniSettings = () => {
+const AlumniSettings = ({ alumniProfile }) => {
   // Profile state
   const [profileData, setProfileData] = useState({
-    fullName: 'Beere Adbhutha',
-    email: 'adbhutha@gmail.com',
-    phone: '+91 9866796510',
-    jobTitle: 'Senior Software Engineer',
-    company: 'Google',
-    graduationYear: '2020',
-    branch: 'Computer Science',
-    location: 'Hyderabad, India',
-    linkedIn: 'linkedin.com/in/adbhutha',
-    github: 'github.com/adbhutha10',
-    bio: 'Senior Software Engineer at Google with expertise in building scalable web applications. BVRIT CSE graduate (2020). Passionate about mentoring students in web development and cloud computing.'
+    fullName: alumniProfile?.fullName || '',
+    email: alumniProfile?.email || '',
+    phone: alumniProfile?.phone || '',
+    jobTitle: alumniProfile?.jobTitle || '',
+    company: alumniProfile?.company || '',
+    graduationYear: alumniProfile?.graduationYear || '',
+    branch: alumniProfile?.branch || '',
+    location: alumniProfile?.location || '',
+    linkedIn: alumniProfile?.linkedIn || '',
+    github: alumniProfile?.github || '',
+    bio: alumniProfile?.bio || ''
   });
 
   // Privacy settings state
   const [privacySettings, setPrivacySettings] = useState({
-    showEmail: false,
-    showPhone: false,
-    showLocationToStudents: true,
-    profileVisibility: 'all', // all, students, none
-    allowStudentRequests: true,
-    showCurrentCompany: true,
-    showPreviousCompanies: true
+    showEmail: alumniProfile?.privacy?.showEmail ?? false,
+    showPhone: alumniProfile?.privacy?.showPhone ?? false,
+    showLocationToStudents: alumniProfile?.privacy?.showLocationToStudents ?? true,
+    profileVisibility: alumniProfile?.privacy?.profileVisibility ?? 'all', // all, students, none
+    allowStudentRequests: alumniProfile?.privacy?.allowStudentRequests ?? true,
+    showCurrentCompany: alumniProfile?.privacy?.showCurrentCompany ?? true,
+    showPreviousCompanies: alumniProfile?.privacy?.showPreviousCompanies ?? true
   });
 
   // Notification settings state
   const [notificationSettings, setNotificationSettings] = useState({
-    mentorshipRequests: true,
-    messageNotifications: true,
-    eventReminders: true,
-    communityActivity: true,
-    emailNotifications: true,
-    pushNotifications: true,
-    opportunityApplications: true,
-    weeklyDigest: false
+    mentorshipRequests: alumniProfile?.notifications?.mentorshipRequests ?? true,
+    messageNotifications: alumniProfile?.notifications?.messageNotifications ?? true,
+    eventReminders: alumniProfile?.notifications?.eventReminders ?? true,
+    communityActivity: alumniProfile?.notifications?.communityActivity ?? true,
+    emailNotifications: alumniProfile?.notifications?.emailNotifications ?? true,
+    pushNotifications: alumniProfile?.notifications?.pushNotifications ?? true,
+    opportunityApplications: alumniProfile?.notifications?.opportunityApplications ?? true,
+    weeklyDigest: alumniProfile?.notifications?.weeklyDigest ?? false
   });
 
   // Account settings state
@@ -115,14 +118,31 @@ const AlumniSettings = () => {
   };
 
   // Handle saving settings
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
+    if (!alumniProfile?.id) {
+      toast.error("Profile ID not found. Cannot save changes.");
+      return;
+    }
+
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const profileRef = doc(db, 'alumni_profiles', alumniProfile.id);
+      await updateDoc(profileRef, {
+        ...profileData,
+        privacy: privacySettings,
+        notifications: notificationSettings,
+        updatedAt: serverTimestamp()
+      });
+      
       setShowSuccessAlert(true);
+      toast.success("Profile updated successfully!");
       setTimeout(() => setShowSuccessAlert(false), 3000);
-    }, 1000);
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      toast.error("Failed to update profile. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle password change

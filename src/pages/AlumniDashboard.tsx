@@ -23,11 +23,12 @@ import {
   XCircle,
   Building2,
   Menu,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import ChatbotUI from '@/components/Chatbot/ChatbotUI';
+
 import StudentDirectory from '@/pages/StudentDirectory';
 import AlumniEvent from '@/pages/AlumniEvent';
 import AlumniOpportunities from '@/pages/AlumniOpportunities';
@@ -35,9 +36,9 @@ import AlumniCommunity from '@/pages/AlumniCommunity';
 import MentorshipPanel from '@/pages/MentorshipPanel';
 import RequestLists from '@/pages/RequestLists';
 import ChatScheduling from '@/pages/ChatScheduling';
-import CommunicationTracker from '@/pages/CommunicationTracker';
-import ProfileAndVerification from '@/pages/ProfileAndVerification';
 import AlumniSettings from '@/pages/AlumniSettings';
+import AlumniCommunication from '@/pages/AlumniCommunication';
+import ProfileAndVerification from '@/pages/ProfileAndVerification';
 import Chatbot from './Chatbot';
 
 // Firebase imports
@@ -48,6 +49,7 @@ import {
   where, 
   onSnapshot, 
   doc, 
+  getDoc,
   updateDoc, 
   serverTimestamp, 
   orderBy, 
@@ -98,6 +100,15 @@ const AlumniDashboard = () => {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
+
   useEffect(() => {
     // Check if user is authenticated
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
@@ -137,43 +148,55 @@ const AlumniDashboard = () => {
     return () => unsubscribeAuth();
   }, [navigate]);
 
+  useEffect(() => {
+    if (!alumniProfile) return;
+    
+    // Update lastActive status
+    const updateStatus = async () => {
+      try {
+        const profileRef = doc(db, 'alumni_profiles', alumniProfile.id);
+        await updateDoc(profileRef, {
+          lastActive: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error updating alumni status:", error);
+      }
+    };
+
+    updateStatus();
+    const interval = setInterval(updateStatus, 120000); // Every 2 minutes
+    
+    return () => clearInterval(interval);
+  }, [alumniProfile]);
+
   // Load notifications when alumni profile is available
   useEffect(() => {
     if (!alumniProfile) return;
     
     const notificationsQuery = query(
       collection(db, 'notifications'),
-      where('recipientId', '==', alumniProfile.userId),
-      orderBy('timestamp', 'desc'),
-      limit(10)
+      where('recipientId', '==', alumniProfile.userId)
     );
     
     const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          const newNotif = change.doc.data();
-          // Don't show toast for old notifications on initial load
-          const isRecent = newNotif.timestamp?.toDate() > new Date(Date.now() - 10000);
-          if (isRecent) {
-            toast(newNotif.content, {
-              description: "New Activity",
-              action: {
-                label: "View",
-                onClick: () => setActivePage(newNotif.type === 'message' ? 'communication' : 'requests'),
-              },
-            });
-          }
-        }
-      });
+      // Sort in memory to avoid index requirement, using raw snapshots for type safety
+      const sortedDocs = [...snapshot.docs].sort((a, b) => {
+        const timeA = a.data().timestamp?.toDate()?.getTime() || 0;
+        const timeB = b.data().timestamp?.toDate()?.getTime() || 0;
+        return timeB - timeA;
+      }).slice(0, 10);
 
-      const notificationsList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        read: doc.data().readAt !== null,
-        time: formatTimestamp(doc.data().timestamp)
-      }));
+      const mappedNotifications = sortedDocs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          read: data.readAt !== null,
+          time: formatTimestamp(data.timestamp)
+        };
+      });
       
-      setNotifications(notificationsList);
+      setNotifications(mappedNotifications);
     });
     
     return () => unsubscribeNotifications();
@@ -185,16 +208,23 @@ const AlumniDashboard = () => {
     
     const requestsQuery = query(
       collection(db, 'mentorshipRequests'),
-      where('mentorId', '==', alumniProfile.userId),
-      where('status', '==', 'pending'),
-      orderBy('createdAt', 'desc')
+      where('mentorId', '==', alumniProfile.userId)
     );
     
     const unsubscribeRequests = onSnapshot(requestsQuery, async (snapshot) => {
+      // Filter and sort in memory
+      const filteredDocs = snapshot.docs
+        .filter(doc => ['pending', 'Pending'].includes(doc.data().status))
+        .sort((a, b) => {
+          const timeA = a.data().createdAt?.toDate().getTime() || 0;
+          const timeB = b.data().createdAt?.toDate().getTime() || 0;
+          return timeB - timeA;
+        });
+
       const requestsList = [];
       
       // Process each document
-      for (const doc of snapshot.docs) {
+      for (const doc of filteredDocs) {
         const requestData = doc.data();
         
         // Get student details
@@ -236,16 +266,21 @@ const AlumniDashboard = () => {
     
     const mentorshipsQuery = query(
       collection(db, 'mentorships'),
-      where('mentorId', '==', alumniProfile.userId),
-      orderBy('updatedAt', 'desc'),
-      limit(5)
+      where('mentorId', '==', alumniProfile.userId)
     );
     
     const unsubscribeMentorships = onSnapshot(mentorshipsQuery, async (snapshot) => {
+      // Sort in memory
+      const sortedDocs = snapshot.docs.sort((a, b) => {
+        const timeA = (a.data().updatedAt || a.data().createdAt)?.toDate().getTime() || 0;
+        const timeB = (b.data().updatedAt || b.data().createdAt)?.toDate().getTime() || 0;
+        return timeB - timeA;
+      }).slice(0, 5);
+
       const mentorshipsList = [];
       let mentorshipCount = 0;
       
-      for (const doc of snapshot.docs) {
+      for (const doc of sortedDocs) {
         const mentorshipData = doc.data();
         
         try {
@@ -266,7 +301,7 @@ const AlumniDashboard = () => {
               date: formatTimestamp(mentorshipData.updatedAt || mentorshipData.createdAt)
             });
             
-            if (mentorshipData.status === 'active' || mentorshipData.status === 'completed') {
+            if (mentorshipData.status?.toLowerCase() === 'active' || mentorshipData.status?.toLowerCase() === 'completed') {
               mentorshipCount++;
             }
           }
@@ -291,16 +326,29 @@ const AlumniDashboard = () => {
     
     const meetingsQuery = query(
       collection(db, 'meetings'),
-      where('alumniId', '==', alumniProfile.userId),
-      where('startTime', '>=', today),
-      orderBy('startTime', 'asc'),
-      limit(5)
+      where('mentorId', '==', alumniProfile.userId) // Changed from alumniId to mentorId to match DB
     );
     
     const unsubscribeMeetings = onSnapshot(meetingsQuery, async (snapshot) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       const meetingsList = [];
       
-      for (const doc of snapshot.docs) {
+      // Filter and sort in memory
+      const upcomingDocs = snapshot.docs
+        .filter(doc => {
+          const startTime = doc.data().startTime?.toDate() || doc.data().dateTimestamp?.toDate();
+          return startTime >= today;
+        })
+        .sort((a, b) => {
+          const timeA = (a.data().startTime || a.data().dateTimestamp)?.toDate().getTime() || 0;
+          const timeB = (b.data().startTime || b.data().dateTimestamp)?.toDate().getTime() || 0;
+          return timeA - timeB;
+        })
+        .slice(0, 5);
+      
+      for (const doc of upcomingDocs) {
         const meetingData = doc.data();
         
         try {
@@ -314,7 +362,9 @@ const AlumniDashboard = () => {
           if (!studentSnapshot.empty) {
             const studentData = studentSnapshot.docs[0].data();
             
-            const startTime = meetingData.startTime.toDate();
+            const startTime = meetingData.startTime && typeof meetingData.startTime.toDate === 'function' 
+              ? meetingData.startTime.toDate() 
+              : new Date();
             
             meetingsList.push({
               id: doc.id,
@@ -346,9 +396,7 @@ const AlumniDashboard = () => {
     // Get alumni's own events (where they are host)
     const hostedEventsQuery = query(
       collection(db, 'events'),
-      where('creatorId', '==', alumniProfile.userId),
-      where('eventDate', '>=', today),
-      orderBy('eventDate', 'asc')
+      where('creatorId', '==', alumniProfile.userId)
     );
     
     // Get events alumni has registered for
@@ -359,13 +407,21 @@ const AlumniDashboard = () => {
     
     // Real-time listener for hosted and registered events
     const unsubscribeHosted = onSnapshot(hostedEventsQuery, (hostedSnapshot) => {
-      const hostedEvents = hostedSnapshot.docs.map(doc => ({
-        id: doc.id,
-        title: doc.data().title,
-        date: formatTimestamp(doc.data().eventDate),
-        status: 'Hosting',
-        attendees: doc.data().attendeeCount || 0
-      }));
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const hostedEvents = hostedSnapshot.docs
+        .filter(doc => {
+          const eventDate = doc.data().eventDate?.toDate() || new Date(doc.data().eventDate);
+          return eventDate >= today;
+        })
+        .map(doc => ({
+          id: doc.id,
+          title: doc.data().title,
+          date: formatTimestamp(doc.data().eventDate),
+          status: 'Hosting',
+          attendees: doc.data().attendeeCount || 0
+        }));
 
       // For registered events, we need a nested listener or combined logic
       // To keep it simple and real-time, we'll listen to registrations
@@ -410,14 +466,20 @@ const AlumniDashboard = () => {
     
     const opportunitiesQuery = query(
       collection(db, 'opportunities'),
-      where('creatorId', '==', alumniProfile.userId),
-      orderBy('createdAt', 'desc')
+      where('creatorId', '==', alumniProfile.userId)
     );
     
     const unsubscribeOpportunities = onSnapshot(opportunitiesQuery, async (snapshot) => {
       const opportunitiesList = [];
       
-      for (const doc of snapshot.docs) {
+      // Sort in memory
+      const sortedDocs = snapshot.docs.sort((a, b) => {
+        const timeA = a.data().createdAt?.toDate().getTime() || 0;
+        const timeB = b.data().createdAt?.toDate().getTime() || 0;
+        return timeB - timeA;
+      });
+
+      for (const doc of sortedDocs) {
         const opportunityData = doc.data();
         
         // Count applications for this opportunity
@@ -460,62 +522,64 @@ const AlumniDashboard = () => {
   useEffect(() => {
     if (!alumniProfile) return;
     
-    const communitiesQuery = query(
-      collection(db, 'communities'),
-      where('creatorId', '==', alumniProfile.userId)
+    // Listen to communities the user has joined
+    const joinedQuery = query(
+      collection(db, 'communityMembers'),
+      where('userId', '==', alumniProfile.userId)
     );
     
-    const unsubscribeCommunities = onSnapshot(communitiesQuery, async (snapshot) => {
+    const unsubscribeJoined = onSnapshot(joinedQuery, async (snapshot) => {
+      const joinedIds = snapshot.docs.map(doc => doc.data().communityId);
+      
+      if (joinedIds.length === 0) {
+        setCommunitiesManaged([]);
+        return;
+      }
+
+      // Now fetch details for these communities
       const communitiesList = [];
       
-      for (const doc of snapshot.docs) {
-        const communityData = doc.data();
-        
-        // Count members
+      for (const communityId of joinedIds) {
         try {
-          const membersQuery = query(
-            collection(db, 'communityMembers'),
-            where('communityId', '==', doc.id)
-          );
+          const communityRef = doc(db, 'communities', communityId);
+          const communityDoc = await getDoc(communityRef);
           
-          const membersSnapshot = await getDocs(membersQuery);
-          const membersCount = membersSnapshot.size;
-          
-          // Count new posts in the last 7 days
-          const oneWeekAgo = new Date();
-          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-          
-          const postsQuery = query(
-            collection(db, 'communityPosts'),
-            where('communityId', '==', doc.id),
-            where('createdAt', '>=', oneWeekAgo)
-          );
-          
-          const postsSnapshot = await getDocs(postsQuery);
-          const newPostsCount = postsSnapshot.size;
-          
-          communitiesList.push({
-            id: doc.id,
-            name: communityData.name,
-            members: membersCount,
-            newPosts: newPostsCount
-          });
+          if (communityDoc.exists()) {
+            const communityData = communityDoc.data();
+            
+            // Count members
+            const membersQuery = query(
+              collection(db, 'communityMembers'),
+              where('communityId', '==', communityId)
+            );
+            const membersSnapshot = await getDocs(membersQuery);
+            const membersCount = membersSnapshot.size;
+            
+            // Count new posts in the last 7 days
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            const postsQuery = query(
+              collection(db, 'communityPosts'),
+              where('communityId', '==', communityId)
+            );
+            const postsSnapshot = await getDocs(postsQuery);
+            
+            communitiesList.push({
+              id: communityId,
+              name: communityData.name,
+              members: membersCount,
+              newPosts: postsSnapshot.size
+            });
+          }
         } catch (error) {
-          console.error("Error counting community metrics:", error);
-          
-          communitiesList.push({
-            id: doc.id,
-            name: communityData.name,
-            members: 0,
-            newPosts: 0
-          });
+          console.error("Error fetching community details:", error);
         }
       }
       
       setCommunitiesManaged(communitiesList);
     });
     
-    return () => unsubscribeCommunities();
+    return () => unsubscribeJoined();
   }, [alumniProfile]);
 
   // Helper function for formatting timestamps
@@ -649,57 +713,69 @@ const AlumniDashboard = () => {
       <div 
         className={`${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } fixed top-0 left-0 h-full w-64 bg-white shadow-md flex-shrink-0 z-30 transition-transform duration-300 ease-in-out lg:relative lg:z-10`}
+        } fixed top-0 left-0 h-full w-64 bg-white shadow-md z-30 transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:flex lg:flex-col lg:flex-shrink-0 overflow-y-auto`}
       >
-        <div className="p-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">BVRIT Connect</h1>
-            <p className="text-sm text-gray-500">Alumni Dashboard</p>
+        <div className="flex flex-col h-full">
+          <div className="p-6 flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">BVRIT Connect</h1>
+              <p className="text-sm text-gray-500">Alumni Dashboard</p>
+            </div>
+            <button 
+              className="lg:hidden text-gray-500 hover:text-gray-700"
+              onClick={toggleSidebar}
+            >
+              <X className="w-6 h-6" />
+            </button>
           </div>
-          <button 
-            className="lg:hidden text-gray-500 hover:text-gray-700"
-            onClick={toggleSidebar}
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <nav className="mt-6 flex-1 overflow-y-auto">
+            <ul>
+              {[
+                { id: 'home', name: 'Home', icon: <Home className="w-5 h-5" /> },
+                { id: 'students', name: 'Student Directory', icon: <Users className="w-5 h-5" /> },
+                { id: 'events', name: 'Events', icon: <Calendar className="w-5 h-5" /> },
+                { id: 'opportunities', name: 'Opportunities Board', icon: <Briefcase className="w-5 h-5" /> },
+                { id: 'communities', name: 'Communities', icon: <BookOpen className="w-5 h-5" /> },
+                { id: 'mentorship', name: 'Mentorship Panel', icon: <Handshake className="w-5 h-5" /> },
+                { id: 'requests', name: 'Requests List', icon: <MessageSquare className="w-5 h-5" /> },
+                { id: 'schedule', name: 'Chat Scheduling', icon: <Clock className="w-5 h-5" /> },
+                { id: 'communication', name: 'Messages', icon: <MessageSquare className="w-5 h-5" /> },
+                { id: 'profile', name: 'Profile & Verification', icon: <User className="w-5 h-5" /> },
+                { id: 'settings', name: 'Settings', icon: <Settings className="w-5 h-5" /> },
+              ].map((item) => (
+                <li key={item.id}>
+                  <button
+                    onClick={() => handleMenuItemClick(item.id)}
+                    className={`flex items-center w-full p-3 px-6 ${
+                      activePage === item.id
+                        ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {item.icon}
+                    <span className="ml-3">{item.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={handleLogout}
+              className="flex items-center w-full p-3 px-6 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="ml-3 font-medium">Logout</span>
+            </button>
+          </div>
         </div>
-        <nav className="mt-6">
-          <ul>
-            {[
-              { id: 'home', name: 'Home', icon: <Home className="w-5 h-5" /> },
-              { id: 'students', name: 'Student Directory', icon: <Users className="w-5 h-5" /> },
-              { id: 'events', name: 'Events', icon: <Calendar className="w-5 h-5" /> },
-              { id: 'opportunities', name: 'Opportunities Board', icon: <Briefcase className="w-5 h-5" /> },
-              { id: 'communities', name: 'Communities', icon: <BookOpen className="w-5 h-5" /> },
-              { id: 'mentorship', name: 'Mentorship Panel', icon: <Handshake className="w-5 h-5" /> },
-              { id: 'requests', name: 'Requests List', icon: <MessageSquare className="w-5 h-5" /> },
-              { id: 'schedule', name: 'Chat Scheduling', icon: <Clock className="w-5 h-5" /> },
-              { id: 'communication', name: 'Communication Tracker', icon: <BarChart className="w-5 h-5" /> },
-              { id: 'profile', name: 'Profile & Verification', icon: <User className="w-5 h-5" /> },
-              { id: 'settings', name: 'Settings', icon: <Settings className="w-5 h-5" /> },
-            ].map((item) => (
-              <li key={item.id}>
-                <button
-                  onClick={() => handleMenuItemClick(item.id)}
-                  className={`flex items-center w-full p-3 px-6 ${
-                    activePage === item.id
-                      ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {item.icon}
-                  <span className="ml-3">{item.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 w-full">
         {/* Top Navigation */}
-        <header className="bg-white shadow-sm py-4 px-4 md:px-8 flex justify-between items-center sticky top-0 z-10">
+        <header className="bg-white shadow-sm py-4 px-4 md:px-8 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center">
             <button 
               className="mr-4 p-1 rounded-md text-gray-700 hover:bg-gray-100 lg:hidden"
@@ -779,7 +855,7 @@ const AlumniDashboard = () => {
         </header>
         
         {/* Main Dashboard Content */}
-        <main className="p-4 md:p-6 lg:p-8">
+        <main className="p-4 md:p-6 lg:p-8 pt-6 md:pt-8">
           {activePage === 'home' && (
             <div className="space-y-6 md:space-y-8">
               {/* Dashboard Stats */}
@@ -1232,15 +1308,7 @@ const AlumniDashboard = () => {
                 </div>
               )}
               
-              {/* Chatbot UI */}
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h2 className="text-lg font-semibold text-gray-800">BVRIT Connect Assistant</h2>
-                </div>
-                <div className="p-6">
-                  <ChatbotUI />
-                </div>
-              </div>
+
             </div>
           )}
 
@@ -1254,9 +1322,9 @@ const AlumniDashboard = () => {
           {activePage === 'mentorship' && <MentorshipPanel />}
           {activePage === 'requests' && <RequestLists />}
           {activePage === 'schedule' && <ChatScheduling />}
-          {activePage === 'communication' && <CommunicationTracker />}
+          {activePage === 'communication' && <AlumniCommunication />}
           {activePage === 'profile' && <ProfileAndVerification />}
-          {activePage === 'settings' && <AlumniSettings />}
+          {activePage === 'settings' && <AlumniSettings alumniProfile={alumniProfile} />}
         </main>
       </div>
     </div>

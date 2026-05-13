@@ -47,13 +47,23 @@ const BVRITAlumniConnect = () => {
   };
 
   const handleLearnMore = () => {
-    // Scroll to features section
     document.getElementById('features-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleExploreFeatures = () => {
-    // Scroll to features section
     document.getElementById('features-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleScrollToAbout = () => {
+    document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleScrollToHowItWorks = () => {
+    document.getElementById('how-it-works-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleScrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleForgotPassword = () => {
@@ -79,16 +89,19 @@ const BVRITAlumniConnect = () => {
             </div>
             
             <div className="hidden md:flex items-center space-x-8">
-              {['Features', 'Community', 'Events', 'Mentorship'].map((item, index) => (
+              {[
+                { label: 'Home',         action: handleScrollToTop },
+                { label: 'About',        action: handleScrollToAbout },
+                { label: 'Features',     action: handleExploreFeatures },
+                { label: 'How It Works', action: handleScrollToHowItWorks },
+              ].map(({ label, action }, index) => (
                 <button
-                  key={item}
+                  key={label}
                   className="text-gray-600 hover:text-blue-600 transition-all duration-200 font-medium relative group"
                   style={{ animationDelay: `${index * 100}ms` }}
-                  onClick={() => {
-                    if (item === 'Features') handleExploreFeatures();
-                  }}
+                  onClick={action}
                 >
-                  {item}
+                  {label}
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-blue-600 transition-all duration-200 group-hover:w-full"></span>
                 </button>
               ))}
@@ -121,16 +134,18 @@ const BVRITAlumniConnect = () => {
         {isMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 animate-slide-down">
             <div className="container mx-auto px-6 py-4 space-y-4">
-              {['Features', 'Community', 'Events', 'Mentorship'].map((item) => (
+              {[
+                { label: 'Home',         action: handleScrollToTop },
+                { label: 'About',        action: handleScrollToAbout },
+                { label: 'Features',     action: handleExploreFeatures },
+                { label: 'How It Works', action: handleScrollToHowItWorks },
+              ].map(({ label, action }) => (
                 <button
-                  key={item}
+                  key={label}
                   className="block w-full text-left text-gray-600 hover:text-blue-600 transition-colors font-medium py-2"
-                  onClick={() => {
-                    if (item === 'Features') handleExploreFeatures();
-                    setIsMenuOpen(false);
-                  }}
+                  onClick={() => { action(); setIsMenuOpen(false); }}
                 >
-                  {item}
+                  {label}
                 </button>
               ))}
               <button 
@@ -191,7 +206,7 @@ const BVRITAlumniConnect = () => {
       </section>
 
       {/* Audience Section */}
-      <section className="py-20 px-6 bg-white">
+      <section id="about-section" className="py-20 px-6 bg-white">
         <div className="container mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-gray-900 animate-fade-in-up">
             Who Is This Platform For?
@@ -324,7 +339,7 @@ const BVRITAlumniConnect = () => {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 px-6 bg-white">
+      <section id="how-it-works-section" className="py-20 px-6 bg-white">
         <div className="container mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-gray-900 animate-fade-in-up">
             How It Works
